@@ -1,0 +1,9 @@
+## Eclipse
+.project
+.texlipse
+.pydevproject
+
+# jupyter
+*.cpython-*.pyc
+**/.ipynb_checkpoints/
+
