@@ -2,6 +2,7 @@ import json
 import itertools
 
 import numpy as np
+import pandas as pd
 from scipy.spatial import distance
 from scipy.linalg import block_diag
 from scipy.fft import dst
@@ -21,11 +22,24 @@ def ifft3d_spsymm(r, dr, k, dk, t_f):
     f = 1/(2*np.pi**2 * r[:,np.newaxis,np.newaxis]) * dst(k[:,np.newaxis,np.newaxis] * t_f, type=1, axis=0) / 2 * dk
     return f
 
-def writeFunction(*args):
+def writeFunction(csvFile, siteNameList, r, k, *funcs):
     """
     args: shape: (numgrid, *, *)
     """
-    pass
+    numgrid = funcs[0].shape[0]
+    N = funcs[0].shape[1]
+    indexList = [i*N+j for i in range(N) for j in range(i,N)]
+
+    flattenFuncList = [r[:,np.newaxis], k[:,np.newaxis]]
+    for arr in funcs:
+        arr = arr.reshape(numgrid,N*N)
+        arr = arr[:,indexList]
+        flattenFuncList.append(arr)
+
+    flattenFunc = np.hstack(flattenFuncList) # shape: (numgrid, N*(N+1)/2)
+    df = pd.DataFrame(flattenFunc)
+    df.to_csv(csvFile, mode='a', float_format='% .10E')
+
 
 
 
@@ -33,6 +47,8 @@ def writeFunction(*args):
 inputFile = 'sampleinput.json'
 jsonDict = json.load(open(inputFile, 'r'))
 
+# アウトプット設定
+csvFile = 'pyrism.log.csv'
 
 # 収束パラメータ
 mixingParam = jsonDict['config']['mixingParam']
@@ -65,11 +81,12 @@ siteList = [solv['site'] for solv in solventList]
 # サイト数
 Ns = [len(l) for l in siteList] # shape: (M,) # 溶媒種毎のサイト数
 totalN = sum(Ns)
-siteName = [l[0] for l in siteList] # shape: (totalN,) # サイト名
-sigma = np.array(itertools.chain.from_iterable([l[1] for l in siteList])).reshape(-1)  # shape: (totalN,) # LJ sigma_ii:   A
-eps = np.array(itertools.chain.from_iterable([l[2] for l in siteList])).reshape(-1)    # shape: (totalN,) # LJ epsilon_ii: kcal/mol
-z = np.array(itertools.chain.from_iterable([l[3] for l in siteList])).reshape(-1)      # shape: (totalN,) # サイト電荷:    e
-xyz = np.array(itertools.chain.from_iterable([l[4:] for l in siteList])).reshape(-1,3) # shape: (totalN, 3) # サイト座標:  A
+joinedSiteList = sum(siteList, []) # shape: (totalN,)
+siteName = [l[0] for l in joinedSiteList] # shape: (totalN,) # サイト名
+sigma = np.array(itertools.chain.from_iterable([l[1] for l in joinedSiteList])).reshape(-1)  # shape: (totalN,) # LJ sigma_ii:   A
+eps = np.array(itertools.chain.from_iterable([l[2] for l in joinedSiteList])).reshape(-1)    # shape: (totalN,) # LJ epsilon_ii: kcal/mol
+z = np.array(itertools.chain.from_iterable([l[3] for l in joinedSiteList])).reshape(-1)      # shape: (totalN,) # サイト電荷:    e
+xyz = np.array(itertools.chain.from_iterable([l[4:] for l in joinedSiteList])).reshape(-1,3) # shape: (totalN, 3) # サイト座標:  A
 
 # 単位行列
 I = np.diag(np.ones(totalN)) # shape: (totalN, totalN)
@@ -152,6 +169,7 @@ for factor in factorList:
     Eta0 = Eta
 
     # 書き出し
+    writeFunction(csvFile, None, r, k, Ul, Cl, t_Cl, Hl, t_Hl, Us, Cs, t_Cs, Hs, t_Hs)
 
 
 
