@@ -113,6 +113,8 @@ Us = beta * 4 * Eps * (__sigmar6**2 - __sigmar6)
 Eta0 = np.zeros(Us.shape)
 
 for factor in factorList:
+    print('start: factor: {}'.format(factor))
+
     # サイト間長距離ポテンシャル行列: [無次元]: shape: (numgrid, totalN, totalN)
     # 電荷行列: A: shape: (totalN,totalN)
     ChargeMatrix = beta * 332.053 * z[:,np.newaxis] * z * factor**2
@@ -140,9 +142,6 @@ for factor in factorList:
     numLoop = 0
     while True:
         numLoop += 1
-        if numLoop > maxIterNum:
-            print('Maximum number of iterations exceeded: {}'.format(maxIterNum))
-            break
 
         # サイト間短距離直接相関行列: shape: (numgrid, totalN, totalN)
         Cs = np.exp(-Us+Eta) -Eta -1 # HNC closure
@@ -162,6 +161,9 @@ for factor in factorList:
         if maxError < criteria:
             print('converged: loop: {}'.format(numLoop))
             break
+        elif numLoop >= maxIterNum:
+            print('Maximum number of iterations exceeded: {}, Error: {}'.format(maxIterNum, maxError))
+            break
         Eta = mixingParam * newEta + (1-mixingParam) * Eta
 
     # 次ループのために更新
@@ -173,7 +175,7 @@ for factor in factorList:
     # 書き出し
     # アウトプット設定
     csvFile = 'pyrism_{:.3f}.csv'.format(factor)
-    writeFunction(csvFile, None, r, k, Ul, Cl, t_Cl, Hl, t_Hl, Us, Cs, t_Cs, Hs, t_Hs, Eta, G)
+    writeFunction(csvFile, None, r, k, t_W, Ul, Cl, t_Cl, Hl, t_Hl, Us, Cs, t_Cs, Hs, t_Hs, Eta, G)
 
 
 
