@@ -1,3 +1,4 @@
+import sys
 import json
 import itertools
 
@@ -41,10 +42,10 @@ def writeFunction(csvFile, siteNameList, r, k, *funcs):
     df.to_csv(csvFile, mode='a', float_format='% .10E')
 
 
-
+# python main.py input.json
 
 # インプット読み込み
-inputFile = 'sampleinput.json'
+inputFile = sys.argv[1]
 jsonDict = json.load(open(inputFile, 'r'))
 
 # アウトプット設定
