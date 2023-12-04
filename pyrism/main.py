@@ -84,10 +84,10 @@ Ns = [len(l) for l in siteList] # shape: (M,) # 溶媒種毎のサイト数
 totalN = sum(Ns)
 joinedSiteList = sum(siteList, []) # shape: (totalN,)
 siteName = [l[0] for l in joinedSiteList] # shape: (totalN,) # サイト名
-sigma = np.array(itertools.chain.from_iterable([l[1] for l in joinedSiteList])).reshape(-1)  # shape: (totalN,) # LJ sigma_ii:   A
-eps = np.array(itertools.chain.from_iterable([l[2] for l in joinedSiteList])).reshape(-1)    # shape: (totalN,) # LJ epsilon_ii: kcal/mol
-z = np.array(itertools.chain.from_iterable([l[3] for l in joinedSiteList])).reshape(-1)      # shape: (totalN,) # サイト電荷:    e
-xyz = np.array(itertools.chain.from_iterable([l[4:] for l in joinedSiteList])).reshape(-1,3) # shape: (totalN, 3) # サイト座標:  A
+sigma = np.array([l[1] for l in joinedSiteList]).reshape(-1)  # shape: (totalN,) # LJ sigma_ii:   A
+eps = np.array([l[2] for l in joinedSiteList]).reshape(-1)    # shape: (totalN,) # LJ epsilon_ii: kcal/mol
+z = np.array([l[3] for l in joinedSiteList]).reshape(-1)      # shape: (totalN,) # サイト電荷:    e
+xyz = np.array([l[4:] for l in joinedSiteList]).reshape(-1,3) # shape: (totalN, 3) # サイト座標:  A
 
 # 単位行列
 I = np.diag(np.ones(totalN)) # shape: (totalN, totalN)
