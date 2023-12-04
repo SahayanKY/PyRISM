@@ -48,8 +48,6 @@ def writeFunction(csvFile, siteNameList, r, k, *funcs):
 inputFile = sys.argv[1]
 jsonDict = json.load(open(inputFile, 'r'))
 
-# アウトプット設定
-csvFile = 'pyrism.log.csv'
 
 # 収束パラメータ
 mixingParam = jsonDict['config']['mixingParam']
@@ -143,7 +141,7 @@ for factor in factorList:
     while True:
         numLoop += 1
         if numLoop > maxIterNum:
-            print('Maximum number of iterations exceeded')
+            print('Maximum number of iterations exceeded: {}'.format(maxIterNum))
             break
 
         # サイト間短距離直接相関行列: shape: (numgrid, totalN, totalN)
@@ -162,15 +160,20 @@ for factor in factorList:
         # 収束判定
         maxError = np.max(newEta - Eta)
         if maxError < criteria:
-            print('converged')
+            print('converged: loop: {}'.format(numLoop))
             break
         Eta = mixingParam * newEta + (1-mixingParam) * Eta
 
     # 次ループのために更新
     Eta0 = Eta
 
+    # 動径分布関数
+    G = Hl + Hs + 1
+
     # 書き出し
-    writeFunction(csvFile, None, r, k, Ul, Cl, t_Cl, Hl, t_Hl, Us, Cs, t_Cs, Hs, t_Hs)
+    # アウトプット設定
+    csvFile = 'pyrism_{:.3f}.csv'.format(factor)
+    writeFunction(csvFile, None, r, k, Ul, Cl, t_Cl, Hl, t_Hl, Us, Cs, t_Cs, Hs, t_Hs, Eta, G)
 
 
 
