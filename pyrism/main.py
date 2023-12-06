@@ -108,9 +108,9 @@ Eps = np.sqrt(eps[:,np.newaxis]*eps)                # shape: (totalN,totalN) # L
 __sigmar6 = (Sigma / r[:,np.newaxis,np.newaxis])**6 # shape: (numgrid, totalN, totalN)
 Us = beta * 4 * Eps * (__sigmar6**2 - __sigmar6)
 
-# 間接相関 Hs - Cs: shape: (numgrid, totalN, totalN)
+# 短距離間接相関 Hs - Cs: shape: (numgrid, totalN, totalN)
 # 初期値設定
-Eta0 = np.zeros(Us.shape)
+Etas0 = np.zeros(Us.shape)
 
 for factor in factorList:
     print('start: factor: {}'.format(factor))
@@ -137,14 +137,14 @@ for factor in factorList:
     t_OmegaT = t_Omega.transpose(0,2,1)
 
     # initialize
-    Eta = Eta0
+    Etas = Etas0
 
     numLoop = 0
     while True:
         numLoop += 1
 
         # サイト間短距離直接相関行列: shape: (numgrid, totalN, totalN)
-        Cs = np.exp(-Us+Eta) -Eta -1 # HNC closure
+        Cs = np.exp(-Us+Hl+Etas) -(Hl+Etas) -1 # HNC closure
         # フーリエ変換
         t_Cs = fft3d_spsymm(r, dr, k, dk, Cs)
 
@@ -157,14 +157,14 @@ for factor in factorList:
         # 間接相関更新
         newEta = Hs - Cs
         # 収束判定
-        maxError = np.max(newEta - Eta)
+        maxError = np.max(newEta - Etas)
         if maxError < criteria:
             print('converged: loop: {}'.format(numLoop))
             break
         elif numLoop >= maxIterNum:
             print('Maximum number of iterations exceeded: {}, Error: {}'.format(maxIterNum, maxError))
             break
-        Eta = mixingParam * newEta + (1-mixingParam) * Eta
+        Eta = mixingParam * newEta + (1-mixingParam) * Etas
 
     # 次ループのために更新
     Eta0 = Eta
