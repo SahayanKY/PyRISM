@@ -164,10 +164,10 @@ for factor in factorList:
         elif numLoop >= maxIterNum:
             print('Maximum number of iterations exceeded: {}, Error: {}'.format(maxIterNum, maxError))
             break
-        Eta = mixingParam * newEta + (1-mixingParam) * Etas
+        Etas = mixingParam * newEta + (1-mixingParam) * Etas
 
     # 次ループのために更新
-    Eta0 = Eta
+    Etas0 = Etas
 
     # 動径分布関数
     G = Hl + Hs + 1
@@ -175,7 +175,7 @@ for factor in factorList:
     # 書き出し
     # アウトプット設定
     csvFile = 'pyrism_{:.3f}.csv'.format(factor)
-    writeFunction(csvFile, None, r, k, t_W, Ul, Cl, t_Cl, Hl, t_Hl, Us, Cs, t_Cs, Hs, t_Hs, Eta, G)
+    writeFunction(csvFile, None, r, k, t_W, Ul, Cl, t_Cl, Hl, t_Hl, Us, Cs, t_Cs, Hs, t_Hs, Etas, G)
 
 
 
