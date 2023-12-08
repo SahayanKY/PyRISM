@@ -73,7 +73,7 @@ L = distance.cdist(xyz, xyz) # shape: (totalN, totalN) # 本来は異なる分�
 # ブロック単位行列
 bI = block_diag(*[np.ones([n,n]) for n in Ns]) # shape: (totalN, totalN) # delta_st
 # 分子内相関行列(波数空間): [無次元]
-t_W = bI * np.sinc(k[:,np.newaxis,np.newaxis] * L) # shape: (numgrid,totalN,totalN)
+t_W = bI * np.sinc(k[:,np.newaxis,np.newaxis] * L / np.pi) # shape: (numgrid,totalN,totalN)
 
 # サイト間短距離ポテンシャル行列: [無次元]: shape: (numgrid, totalN, totalN)
 # Lorentz-Berthelot則
