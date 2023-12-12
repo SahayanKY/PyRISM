@@ -13,14 +13,14 @@ def fft3d_spsymm(r, dr, k, dk, f):
     """
     f: shape: (numgrid, *, *)
     """
-    t_f = 4*np.pi/k[:,np.newaxis,np.newaxis] * dst(r[:,np.newaxis,np.newaxis] * f, type=1, axis=0) / 2 * dr
+    t_f = 4*np.pi/k[:,np.newaxis,np.newaxis] * dst(r[:,np.newaxis,np.newaxis] * f, type=4, axis=0) / 2 * dr
     return t_f
 
 def ifft3d_spsymm(r, dr, k, dk, t_f):
     """
     t_f: shape: (numgrid, *, *)
     """
-    f = 1/(2*np.pi**2 * r[:,np.newaxis,np.newaxis]) * dst(k[:,np.newaxis,np.newaxis] * t_f, type=1, axis=0) / 2 * dk
+    f = 1/(2*np.pi**2 * r[:,np.newaxis,np.newaxis]) * dst(k[:,np.newaxis,np.newaxis] * t_f, type=4, axis=0) / 2 * dk
     return f
 
 def writeFunction(csvFile, siteNameList, r, k, *funcs):
@@ -66,9 +66,10 @@ beta = 1 / (1.98720e-3 * temperature) # 逆温度: (kcal/mol)^-1
 grid1DDict = jsonDict['discretize']['grid1D']
 dr = grid1DDict['dr'] # 刻み幅: A
 numgrid = grid1DDict['n']
-dk = np.pi / dr / (numgrid+1) # 刻み幅: A^-1
-r = (np.arange(numgrid) + 1) * dr # shape: (numgrid,) # 動径位置: A
-k = (np.arange(numgrid) + 1) * dk # shape: (numgrid,) # 動径位置: A^-1
+# DST(type4)に合わせてグリッド生成
+dk = np.pi / dr / numgrid # 刻み幅: A^-1
+r = (np.arange(numgrid) + 0.5) * dr # shape: (numgrid,) # 動径位置: A
+k = (np.arange(numgrid) + 0.5) * dk # shape: (numgrid,) # 動径位置: A^-1
 
 # 溶媒データ読み込み
 solventList = jsonDict['solvent']
