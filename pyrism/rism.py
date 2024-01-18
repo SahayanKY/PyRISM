@@ -12,22 +12,22 @@ class RISM():
 
         # RISMの種類を判別
         isXRISM = rismDict['configure'].get('XRISM', True)
-        # dataオブジェクトとoptimizerオブジェクトを生成
+        # dataオブジェクトとsolverオブジェクトを生成
         if isXRISM:
             data = XRISMData(rismDict, temperature, closure)
-            optimizer = XRISMOptimizer(rismDict, closure)
+            solver = XRISMSolver(rismDict, closure)
         else:
             data = RISMData(rismDict, temperature, closure)
-            optimizer = RISMOptimizer(rismDict, closure)
+            solver = RISMSolver(rismDict, closure)
 
         self.__data = data
-        self.__optimizer = optimizer
+        self.__solver = solver
 
-        # optimizerにdataを紐づけ
-        optimizer.setData(data)
+        # solverにdataを紐づけ
+        solver.setData(data)
 
     def solve(self):
-        self.__optimizer.optimize()
+        self.__solver.solve()
 
     def write(self, csvFile):
         somedata = self.__data.give()
@@ -146,13 +146,14 @@ class RISMInputData():
 class RISMData():
     def __init__(self):
         self.isConverged = False
+        self.chargeFactor = None
 
+        self.fUl = None # ファクター済み長距離ポテンシャル
         self.t_C = None # 直接相関
         self.t_H = None # 全相関
         self.t_X = None # 溶媒感受率
         self.C = None
         self.H = None
-        self.X = None
         self.Eta = None # H - C
 
 
@@ -172,9 +173,17 @@ class XRISMData(RISMData):
         self.Hs = None
         self.Etas = None
 
+class RISMInitializer():
+    def __init__(self, shape):
+        self.shape = shape
 
-class RISMOptimizer():
-    def __init__(self, configDict, closure, risminpdata):
+    def initializeEta0(self):
+        # Etaの初期化
+        Eta0 = np.zeros(self.shape)
+        return Eta0
+
+class RISMSolver():
+    def __init__(self, configDict, closure, risminpdata, initializer):
         self.mixingParam = configDict.get('mixingParam', 0.5)
 
         self.chargeUp = configDict.get('chargeUp', 0.25)
@@ -187,64 +196,77 @@ class RISMOptimizer():
         self.maxiter = configDict.get('maxiter', 1000)
         self.closure = closure
         self.risminpdata = risminpdata
-        self.rismdata = None
+        self.initializer = initializer
+        #self.rismdata = None
 
-    def initialize(self):
-        # RISMDataの初期化
-        shape = self.risminpdata.t_W.shape
-        self.rismdata.Eta = np.zeros(shape)
-
-    def optimize(self):
+    def solve(self):
         I = self.risminpdata.I
         P = self.risminpdata.P
         t_W = self.risminpdata.t_W
         Us = self.risminpdata.Us
         Ul = self.risminpdata.Ul
 
-        Eta = self.rismdata.Eta
+        isConverged = False
+        Eta0 = self.initializer.initializeEta0()
 
         for factor in self.chargeFactorList:
-            _Ul = Ul * factor**2
-            _U = Us + _Ul
+            # 初期化
+            fUl = Ul * factor**2
+            fU = Us + fUl
+
+            Eta = Eta0
 
             numLoop = 0
             while True:
                 numLoop +=1
-                C = np.exp(-_U+Eta) -Eta -1 # HNC closure
+                C = np.exp(-fU+Eta) -Eta -1 # HNC closure
                 # フーリエ変換
                 t_C = None
                 # RISM式
                 t_H = t_W @ t_C @ t_W @ np.linalg.inv(I - P @ t_C @ t_W)
                 # 逆フーリエ変換
                 H = None
-
-                # 更新
                 newEta = H - C
+
                 # 収束判定
                 maxError = np.max(newEta - Eta)
                 if maxError < self.converge:
                     print('converged: loop: {}'.format(numLoop))
+                    isConverged = True
                     break
                 elif numLoop >= self.maxiter:
                     print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxiter, maxError))
+                    isConverged = False
                     break
+                # 更新
                 Eta = self.mixingParam * newEta + (1-self.mixingParam) * Eta
 
+            Eta0 = Eta
+
+        # 細かくRISMDataを保存したい場合を考慮した書き方にしたい
+        self.rismdata = RISMData()
+        d = self.rismdata
+        d.isConverged = isConverged
+        d.chargeFactor = factor
+        d.fUl = fUl
+        d.t_C = t_C
+        d.t_H = t_H
+        d.t_X = t_W + P @ t_H
+        d.C = C
+        d.H = H
+        d.Eta = Eta
+
+        return d
 
 
-
-        pass
-        # returnでRISMDataを返す
-
-
-class XRISMOptimizer(RISMOptimizer):
+class XRISMSolver(RISMSolver):
     def __init__(self, configDict, closure, risminpdata):
         super().__init__(configDict, closure, risminpdata)
 
     def initialize(self):
         pass
 
-    def optimize(self):
+    def solve(self):
         pass
 
 
