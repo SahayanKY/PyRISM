@@ -5,19 +5,25 @@ from scipy.spatial import distance
 from scipy.linalg import block_diag
 
 class RISM():
-    def __init__(self, jsonFile):
+    def __init__(self, rismDict, temperature, closure):
         # json読み込み
-        jsonDict = json.load(open(jsonFile, 'r'))
+        #jsonDict = json.load(open(jsonFile, 'r'))
         # .....
 
+        # RISMの種類を判別
+        isXRISM = rismDict['configure'].get('XRISM', True)
         # dataオブジェクトとoptimizerオブジェクトを生成
-        data = RISMData()
-        optimizer = RISMOptimizer()
+        if isXRISM:
+            data = XRISMData(rismDict, temperature, closure)
+            optimizer = XRISMOptimizer(rismDict, closure)
+        else:
+            data = RISMData(rismDict, temperature, closure)
+            optimizer = RISMOptimizer(rismDict, closure)
+
         self.__data = data
         self.__optimizer = optimizer
 
-        # 互いを紐づけ
-        data.setOptimizer(optimizer)
+        # optimizerにdataを紐づけ
         optimizer.setData(data)
 
     def solve(self):
@@ -27,7 +33,7 @@ class RISM():
         somedata = self.__data.give()
         # csvFileへ書き込み
 
-class RISMData():
+class RISMInputData():
     def __init__(self, rismDict, temperature, closure):
         # 温度情報
         # temperature : 温度: K
@@ -104,14 +110,13 @@ class RISMData():
 
         # サイト間長距離ポテンシャル行列: [無次元]: shape: (numgrid, totalN, totalN)
         # 電荷行列: A: shape: (totalN,totalN)
-        ChargeMatrix = beta * 332.053 * z[:,np.newaxis] * z
-        Ul = ChargeMatrix / r[:,np.newaxis,np.newaxis]
-        t_Ul = ChargeMatrix * 4*np.pi / (k[:,np.newaxis,np.newaxis]**2)
+        ZZ = z[:,np.newaxis] * z
+        __ZZ = beta * 332.053 * ZZ
+        Ul = __ZZ / r[:,np.newaxis,np.newaxis]
+        t_Ul = __ZZ * 4*np.pi / (k[:,np.newaxis,np.newaxis]**2)
 
         # -------------------------------------
         # インスタンス初期化
-        self.isConverged = False
-
         self.r = r
         self.dr = dr
         self.k = k
@@ -121,39 +126,126 @@ class RISMData():
         self.beta = beta
 
         self.rhos = rhos
+        self.belongList = belongList
         self.siteNameList = siteNameList
+        self.Sigma = Sigma
+        self.Eps = Eps
+        self.z = z
+        self.ZZ = ZZ
 
         self.I = I
         self.P = P
         self.t_W = t_W
-        self.z = z
         self.Us = Us
         self.Ul = Ul
         self.t_Ul = t_Ul
 
-        self.C = None
-        self.H = None
-
         self.closure = closure
 
 
+class RISMData():
+    def __init__(self):
+        self.isConverged = False
+
+        self.t_C = None # 直接相関
+        self.t_H = None # 全相関
+        self.t_X = None # 溶媒感受率
+        self.C = None
+        self.H = None
+        self.X = None
+        self.Eta = None # H - C
+
+
+class XRISMData(RISMData):
+    def __init__(self):
+        super().__init__()
+
+        self.t_Cl = None
+        self.t_Cs = None
+        self.t_Hl = None
+        self.t_Hs = None
+        self.t_Xl = None
+
+        self.Cl = None
+        self.Cs = None
+        self.Hl = None
+        self.Hs = None
+        self.Etas = None
+
 
 class RISMOptimizer():
-    def __init__(self, closure, method):
-        pass
+    def __init__(self, configDict, closure, risminpdata):
+        self.mixingParam = configDict.get('mixingParam', 0.5)
 
-    def setData(self, data):
-        if self.__data is None:
-            self.__data = data
-        else:
-            raise RuntimeError('data is already set and it cannot be overwritten')
+        self.chargeUp = configDict.get('chargeUp', 0.25)
+        factorList = np.arange(0,1,self.chargeUp)
+        if factorList[-1] != 1:
+            factorList = np.append(factorList, 1)
+        self.chargeFactorList = factorList
+
+        self.converge = configDict.get('converge', 1e-8)
+        self.maxiter = configDict.get('maxiter', 1000)
+        self.closure = closure
+        self.risminpdata = risminpdata
+        self.rismdata = None
+
+    def initialize(self):
+        # RISMDataの初期化
+        shape = self.risminpdata.t_W.shape
+        self.rismdata.Eta = np.zeros(shape)
+
+    def optimize(self):
+        I = self.risminpdata.I
+        P = self.risminpdata.P
+        t_W = self.risminpdata.t_W
+        Us = self.risminpdata.Us
+        Ul = self.risminpdata.Ul
+
+        Eta = self.rismdata.Eta
+
+        for factor in self.chargeFactorList:
+            _Ul = Ul * factor**2
+            _U = Us + _Ul
+
+            numLoop = 0
+            while True:
+                numLoop +=1
+                C = np.exp(-_U+Eta) -Eta -1 # HNC closure
+                # フーリエ変換
+                t_C = None
+                # RISM式
+                t_H = t_W @ t_C @ t_W @ np.linalg.inv(I - P @ t_C @ t_W)
+                # 逆フーリエ変換
+                H = None
+
+                # 更新
+                newEta = H - C
+                # 収束判定
+                maxError = np.max(newEta - Eta)
+                if maxError < self.converge:
+                    print('converged: loop: {}'.format(numLoop))
+                    break
+                elif numLoop >= self.maxiter:
+                    print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxiter, maxError))
+                    break
+                Eta = self.mixingParam * newEta + (1-self.mixingParam) * Eta
+
+
+
+
+        pass
+        # returnでRISMDataを返す
+
+
+class XRISMOptimizer(RISMOptimizer):
+    def __init__(self, configDict, closure, risminpdata):
+        super().__init__(configDict, closure, risminpdata)
+
+    def initialize(self):
+        pass
 
     def optimize(self):
         pass
-
-
-
-
 
 
 
