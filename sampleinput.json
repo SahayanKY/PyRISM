@@ -16,10 +16,12 @@
 		},
 		"configure" : {
 			"XRISM" : true,
+			"initialze" : "zeroization",
 			"mixingParam" : 0.3,
 			"chargeUp" : 0.25,
 			"converge" : 1e-10,
-			"maxiter" : 1000
+			"maxIter" : 1000,
+			"saveInterval" : 100
 		}
 	},
 	"3DRISM" : {

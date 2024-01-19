@@ -144,17 +144,18 @@ class RISMInputData():
 
 
 class RISMData():
-    def __init__(self):
-        self.isConverged = False
-        self.chargeFactor = None
-
-        self.fUl = None # ファクター済み長距離ポテンシャル
-        self.t_C = None # 直接相関
-        self.t_H = None # 全相関
-        self.t_X = None # 溶媒感受率
-        self.C = None
-        self.H = None
-        self.Eta = None # H - C
+    def __init__(self, **kwargs):
+        self.numLoop = kwargs['numLoop']
+        self.maxError = kwargs['maxError']
+        self.isConverged = kwargs['isConverged']
+        self.chargeFactor = kwargs['chargeFactor']
+        self.fUl = kwargs['fUl']
+        self.t_C = kwargs['t_C']
+        self.t_H = kwargs['t_H']
+        self.t_X = kwargs['t_X']
+        self.C = kwargs['C']
+        self.H = kwargs['H']
+        self.Eta = kwargs['Eta']
 
 
 class XRISMData(RISMData):
@@ -183,7 +184,11 @@ class RISMInitializer():
         return Eta0
 
 class RISMSolver():
-    def __init__(self, configDict, closure, risminpdata, initializer):
+    def __init__(self, configDict, closure, risminpdata):
+        iniMethod = configDict.get('initialze', "zeroization")
+        initializer = RISMInitializer(iniMethod)
+        self.initializer = initializer
+
         self.mixingParam = configDict.get('mixingParam', 0.5)
 
         self.chargeUp = configDict.get('chargeUp', 0.25)
@@ -193,32 +198,57 @@ class RISMSolver():
         self.chargeFactorList = factorList
 
         self.converge = configDict.get('converge', 1e-8)
-        self.maxiter = configDict.get('maxiter', 1000)
+        self.maxIter = configDict.get('maxIter', 1000)
+
+        self.saveInterval = configDict.get('saveInterval', None)
+        self.isSaveIntermediate = self.saveInterval is not None
+
         self.closure = closure
         self.risminpdata = risminpdata
-        self.initializer = initializer
-        #self.rismdata = None
+
+        self.rismdataList = []
 
     def solve(self):
+        def __appendData(force=False):
+            if self.isSaveIntermediate or force:
+                t_X = t_W + P @ t_H
+                data = RISMData(
+                        numLoop=numLoop,
+                        maxError=maxError,
+                        isConverged=isConverged,
+                        chargeFactor=factor,
+                        fUl=fUl,
+                        t_C=t_C,
+                        t_H=t_H,
+                        t_X=t_X,
+                        C=C,
+                        H=H,
+                        Eta=Eta
+                    )
+                self.rismdataList.append(data)
+            else:
+                return
+
         I = self.risminpdata.I
         P = self.risminpdata.P
         t_W = self.risminpdata.t_W
         Us = self.risminpdata.Us
         Ul = self.risminpdata.Ul
 
-        isConverged = False
         Eta0 = self.initializer.initializeEta0()
 
+        numTotalLoop = 0
         for factor in self.chargeFactorList:
             # 初期化
             fUl = Ul * factor**2
             fU = Us + fUl
-
             Eta = Eta0
+            isConverged = False
 
             numLoop = 0
             while True:
                 numLoop +=1
+                numTotalLoop += 1
                 C = np.exp(-fU+Eta) -Eta -1 # HNC closure
                 # フーリエ変換
                 t_C = None
@@ -226,37 +256,35 @@ class RISMSolver():
                 t_H = t_W @ t_C @ t_W @ np.linalg.inv(I - P @ t_C @ t_W)
                 # 逆フーリエ変換
                 H = None
-                newEta = H - C
 
+                newEta = H - C
                 # 収束判定
                 maxError = np.max(newEta - Eta)
+                if numLoop % 100 == 0:
+                    print('Factor: {}, Iter: {}, Error: {}'.format(factor, numLoop, maxError))
                 if maxError < self.converge:
-                    print('converged: loop: {}'.format(numLoop))
+                    print('converged: Iter: {}'.format(numLoop))
                     isConverged = True
+                    __appendData()
                     break
-                elif numLoop >= self.maxiter:
-                    print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxiter, maxError))
+                elif numLoop >= self.maxIter:
+                    print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxIter, maxError))
                     isConverged = False
+                    __appendData()
                     break
+                if numTotalLoop % self.saveInterval == 0:
+                    # data生成
+                    __appendData()
+
                 # 更新
                 Eta = self.mixingParam * newEta + (1-self.mixingParam) * Eta
 
+            # 初期値更新
             Eta0 = Eta
 
-        # 細かくRISMDataを保存したい場合を考慮した書き方にしたい
-        self.rismdata = RISMData()
-        d = self.rismdata
-        d.isConverged = isConverged
-        d.chargeFactor = factor
-        d.fUl = fUl
-        d.t_C = t_C
-        d.t_H = t_H
-        d.t_X = t_W + P @ t_H
-        d.C = C
-        d.H = H
-        d.Eta = Eta
-
-        return d
+        # 最終結果は中間結果を残さない場合(not isSaveItermediate)にも残す(force=True)
+        if not self.isSaveIntermediate:
+            __appendData(force=True)
 
 
 class XRISMSolver(RISMSolver):
