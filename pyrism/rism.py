@@ -10,24 +10,28 @@ class RISM():
         #jsonDict = json.load(open(jsonFile, 'r'))
         # .....
 
+        # inpオブジェクト生成
+        inpdata = RISMInputData(rismDict, temperature, closure)
+
         # RISMの種類を判別
-        isXRISM = rismDict['configure'].get('XRISM', True)
-        # dataオブジェクトとsolverオブジェクトを生成
+        configDict = rismDict['configure']
+        isXRISM = configDict.get('XRISM', True)
+        # solverオブジェクト生成
         if isXRISM:
-            data = XRISMData(rismDict, temperature, closure)
-            solver = XRISMSolver(rismDict, closure)
+            solver = XRISMSolver(configDict, closure, inpdata)
         else:
-            data = RISMData(rismDict, temperature, closure)
-            solver = RISMSolver(rismDict, closure)
+            solver = RISMSolver(configDict, closure, inpdata)
 
-        self.__data = data
+        self.__rismDict = rismDict
+        self.__inpdata = inpdata
+        self.__isXRISM = isXRISM
         self.__solver = solver
-
-        # solverにdataを紐づけ
-        solver.setData(data)
+        self.__resultDataList = None
 
     def solve(self):
+        # 1D-RISM計算
         self.__solver.solve()
+        self.__resultDataList = self.__solver.giveResult()
 
     def write(self, csvFile):
         somedata = self.__data.give()
@@ -139,6 +143,7 @@ class RISMInputData():
         self.Us = Us
         self.Ul = Ul
         self.t_Ul = t_Ul
+        self.corrFuncShape = t_W.shape
 
         self.closure = closure
 
@@ -175,18 +180,23 @@ class XRISMData(RISMData):
         self.Etas = None
 
 class RISMInitializer():
-    def __init__(self, shape):
+    def __init__(self, shape, method):
         self.shape = shape
+        self.method = method
 
     def initializeEta0(self):
         # Etaの初期化
-        Eta0 = np.zeros(self.shape)
-        return Eta0
+        if self.method == 'zeroization':
+            Eta0 = np.zeros(self.shape)
+            return Eta0
+        else:
+            return None
 
 class RISMSolver():
     def __init__(self, configDict, closure, risminpdata):
+        shape = risminpdata.corrFuncShape
         iniMethod = configDict.get('initialze', "zeroization")
-        initializer = RISMInitializer(iniMethod)
+        initializer = RISMInitializer(shape, iniMethod)
         self.initializer = initializer
 
         self.mixingParam = configDict.get('mixingParam', 0.5)
@@ -209,11 +219,11 @@ class RISMSolver():
         self.rismdataList = []
 
     def solve(self):
-        def __appendData(force=False):
+        def __registerData(force=False):
             if self.isSaveIntermediate or force:
                 t_X = t_W + P @ t_H
                 data = RISMData(
-                        numLoop=numLoop,
+                        numLoop=numTotalLoop,
                         maxError=maxError,
                         isConverged=isConverged,
                         chargeFactor=factor,
@@ -265,16 +275,16 @@ class RISMSolver():
                 if maxError < self.converge:
                     print('converged: Iter: {}'.format(numLoop))
                     isConverged = True
-                    __appendData()
+                    __registerData()
                     break
                 elif numLoop >= self.maxIter:
                     print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxIter, maxError))
                     isConverged = False
-                    __appendData()
+                    __registerData()
                     break
                 if numTotalLoop % self.saveInterval == 0:
                     # data生成
-                    __appendData()
+                    __registerData()
 
                 # 更新
                 Eta = self.mixingParam * newEta + (1-self.mixingParam) * Eta
@@ -284,8 +294,11 @@ class RISMSolver():
 
         # 最終結果は中間結果を残さない場合(not isSaveItermediate)にも残す(force=True)
         if not self.isSaveIntermediate:
-            __appendData(force=True)
+            __registerData(force=True)
 
+    def giveResult(self):
+        # TODO
+        return None
 
 class XRISMSolver(RISMSolver):
     def __init__(self, configDict, closure, risminpdata):
