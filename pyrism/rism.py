@@ -11,19 +11,19 @@ class RISM():
         # .....
 
         # inpオブジェクト生成
-        inpdata = RISMInputData(rismDict, temperature, closure)
+        inpData = RISMInputData(rismDict, temperature, closure)
 
         # RISMの種類を判別
         configDict = rismDict['configure']
         isXRISM = configDict.get('XRISM', True)
         # solverオブジェクト生成
         if isXRISM:
-            solver = XRISMSolver(configDict, closure, inpdata)
+            solver = XRISMSolver(configDict, closure, inpData)
         else:
-            solver = RISMSolver(configDict, closure, inpdata)
+            solver = RISMSolver(configDict, closure, inpData)
 
         self.__rismDict = rismDict
-        self.__inpdata = inpdata
+        self.__inpData = inpData
         self.__isXRISM = isXRISM
         self.__solver = solver
         self.__resultDataList = None
@@ -33,7 +33,45 @@ class RISM():
         self.__solver.solve()
         self.__resultDataList = self.__solver.giveResult()
 
-    def write(self, csvFile):
+    def write(self, directory):
+        inpData = self.__inpData
+        resultDataList = self.__resultDataList
+
+        # inpData取り出し
+        inpTableData, inpTableColumns = inpData.giveMergedFuncsData()
+
+        finalLoop = resultDataList[-1].numLoop
+        numDigit = len(str(finalLoop))
+        for i, resultData in enumerate(resultDataList):
+            # 出力先決定
+            numLoop = resultData.numLoop
+            if i == len(resultDataList) -1:
+                csvFile = 'rism_result.csv'
+            else:
+                csvFile = 'rism_result_loop{}.csv'.format(str(numLoop).zfill(numDigit))
+            csvPath = directory + '/' + csvFile
+
+            # resultData取り出し
+            resultTableData, resultTableColumns = resultData.giveMergedFuncsData()
+
+
+
+            # csv書き出し
+
+
+
+
+        # 最終結果のグラフ書き出し
+
+        # 途中経過のアニメーション書き出し
+        # https://qiita.com/yubais/items/c95ba9ff1b23dd33fde2
+
+        # - 統計量書き出し
+
+
+
+
+
         somedata = self.__data.give()
         # csvFileへ書き込み
 
@@ -125,6 +163,7 @@ class RISMInputData():
         self.dr = dr
         self.k = k
         self.dk = dk
+        self.numgrid = numgrid
 
         self.T = temperature
         self.beta = beta
@@ -136,6 +175,7 @@ class RISMInputData():
         self.Eps = Eps
         self.z = z
         self.ZZ = ZZ
+        self.totalN = totalN
 
         self.I = I
         self.P = P
@@ -147,9 +187,41 @@ class RISMInputData():
 
         self.closure = closure
 
+        # 書き出し時に用いる相関のラベル(sigma-tau)の作成
+        _snl = ['{}:{}'.format(b,s) for b,s in zip(belongList, siteNameList)]
+        # 非対称行列用
+        self.sitesiteLabelList = ['{}-{}'.format(_snl[i],_snl[j]) for i in range(totalN) for j in range(totalN)]
+        # 対称行列用
+        self.sitesiteLabelListForSymmMatrix = ['{}-{}'.format(_snl[i],_snl[j]) for i in range(totalN) for j in range(i,totalN)]
+        self.uniqIndexListForFlattenSymmMatrix = [i*N+j for i in range(totalN) for j in range(i,totalN)]
+
+    def giveMergedFuncsData(self):
+        # r, k, t_W, Us, Ul
+        d = {'r': self.r, 'k': self.k, 't_W':self.t_W, 'Us':self.Us, 'Ul':self.Ul}
+        numgrid = self.numgrid
+        totalN = self.totalN
+        uniqIndexListForFlattenSymmMatrix = self.uniqIndexListForFlattenSymmMatrix
+        sslabelList_symm = self.sitesiteLabelListForSymmMatrix
+
+        columns = []
+        data = []
+        for name, value in d.items():
+            if name == 'r' or name == 'k':
+                # 結合の時のことを考慮して二次元配列に変えておく
+                columns.append((name,))
+                data.append(value[:,np.newaxis]) # shape: (numgrid, 1)
+            else:
+                # 対称行列は上半分だけ取り出して、平坦化する
+                columns.extend([(name,ss) for ss in sslabelList_symm])
+                data.append(value.reshape(numgrid, totalN**2)[:,uniqIndexListForFlattenSymmMatrix]) # shape: (numgrid, N(N+1)/2)
+        # 結合
+        data = np.hstack(data) # shape: (numgrid, N(N+1)/2 * 3)
+
+        return data, columns
 
 class RISMData():
     def __init__(self, **kwargs):
+        self.inpData = kwargs['inpData']
         self.numLoop = kwargs['numLoop']
         self.maxError = kwargs['maxError']
         self.isConverged = kwargs['isConverged']
@@ -160,8 +232,37 @@ class RISMData():
         self.t_X = kwargs['t_X']
         self.C = kwargs['C']
         self.H = kwargs['H']
+        self.G = kwargs['G']
         self.Eta = kwargs['Eta']
 
+    def giveMergedFuncsData(self):
+        # fUl, t_C, t_H, t_X, C, H, G, Eta
+        d = {
+                'fUl': self.fUl,
+                't_C': self.t_C, 't_H':self.t_H, 't_X':self.t_X,
+                'C':self.C, 'H':self.H, 'G':self.G, 'Eta':self.Eta
+            }
+        numgrid = self.inpData.numgrid
+        totalN = self.inpData.totalN
+        uniqIndexListForFlattenSymmMatrix = self.inpData.uniqIndexListForFlattenSymmMatrix
+        sslabelList = self.inpData.sitesiteLabelList
+        sslabelList_symm = self.inpData.sitesiteLabelListForSymmMatrix
+
+        columns = []
+        data = []
+        for name, value in d.items():
+            if name == 't_X':
+                # t_Xは非対称行列
+                columns.extend([(name,ss) for ss in sslabelList])
+                data.append(value.reshape(numgrid, totalN**2)) # shape: (numgrid, N*N)
+            else:
+                # 対称行列は上半分だけ取り出して、平坦化する
+                columns.extend([(name,ss) for ss in sslabelList_symm])
+                data.append(value.reshape(numgrid, totalN**2)[:,uniqIndexListForFlattenSymmMatrix]) # shape: (numgrid, N(N+1)/2)
+        # 結合
+        data = np.hstack(data) # shape: (numgrid, N(N+1)/2 * 3)
+
+        return data, columns
 
 class XRISMData(RISMData):
     def __init__(self):
@@ -178,6 +279,20 @@ class XRISMData(RISMData):
         self.Hl = None
         self.Hs = None
         self.Etas = None
+
+    def giveMergedFuncsData(self):
+        pass
+
+def RISM_HNC():
+    """
+    h = exp(-u + h - c) -1
+        h -> c / c -> h
+    h = exp(-u + eta) -1
+        h -> eta / eta -> h
+    eta + c = exp(-u + eta) -1
+        eta -> c / c -> eta
+    """
+    pass
 
 class RISMInitializer():
     def __init__(self, shape, method):
@@ -216,13 +331,14 @@ class RISMSolver():
         self.closure = closure
         self.risminpdata = risminpdata
 
-        self.rismdataList = []
+        self.rismdataList = None
 
     def solve(self):
         def __registerData(force=False):
             if self.isSaveIntermediate or force:
                 t_X = t_W + P @ t_H
                 data = RISMData(
+                        inpData=self.risminpdata,
                         numLoop=numTotalLoop,
                         maxError=maxError,
                         isConverged=isConverged,
@@ -233,11 +349,14 @@ class RISMSolver():
                         t_X=t_X,
                         C=C,
                         H=H,
+                        G=H+1,
                         Eta=Eta
                     )
                 self.rismdataList.append(data)
             else:
                 return
+
+        self.rismdataList = []
 
         I = self.risminpdata.I
         P = self.risminpdata.P
@@ -297,8 +416,10 @@ class RISMSolver():
             __registerData(force=True)
 
     def giveResult(self):
-        # TODO
-        return None
+        if self.rismdataList is None:
+            raise RuntimeError()
+
+        return self.rismdataList
 
 class XRISMSolver(RISMSolver):
     def __init__(self, configDict, closure, risminpdata):
