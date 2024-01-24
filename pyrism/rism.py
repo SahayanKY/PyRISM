@@ -51,10 +51,16 @@ class RISM():
         for i, resultData in enumerate(resultDataList):
             # 出力先決定
             numLoop = resultData.numLoop
-            if i == len(resultDataList) -1:
+            isLastData = i == len(resultDataList) -1
+            if isLastData:
+                # 最終結果
                 csvFile = 'rism_result.csv'
+                float_format = '% .10E'
             else:
+                # 途中経過
                 csvFile = 'rism_result_loop{}.csv'.format(str(numLoop).zfill(numDigit))
+                float_format = '% .4E'
+
             csvPath = directory + '/' + csvFile
 
             # resultData取り出し
@@ -66,10 +72,12 @@ class RISM():
             df = pd.DataFrame(tableData, columns=columns)
 
             # csv書き出し
-            df.to_csv(csvPath, mode='w', index=False, float_format='% .10E')
+            df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
 
-
-
+            # solve中に書き出していかないと
+            # メモリ量の関係で途中経過のData全てを保持できない場合がある
+            # -  4000点 *   3サイト * 13行列関数 * 10桁 -> 5644 KB
+            # - 10000点 * 100サイト * 13行列関数 *  5桁 -> 7,838,888 KB = 7.8 GB (推定)
 
         # 最終結果のグラフ書き出し
 
