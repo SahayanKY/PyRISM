@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import distance
 from scipy.linalg import block_diag
-from scipy.fft import dst
+
+from grid import GridData
 
 class RISM():
     def __init__(self, rismDict, temperature, closure):
@@ -36,63 +37,22 @@ class RISM():
         self.__solver.solve()
         self.__resultDataList = self.__solver.giveResult()
 
-    def write(self, directory):
-        if self.__resultDataList is None:
-            raise RuntimeError()
-
-        inpData = self.__inpData
-        resultDataList = self.__resultDataList
-
-        # inpData取り出し
-        inpTableData, inpTableColumns = inpData.giveMergedFuncsData()
-
-        finalLoop = resultDataList[-1].numLoop
-        numDigit = len(str(finalLoop))
-        for i, resultData in enumerate(resultDataList):
-            # 出力先決定
-            numLoop = resultData.numLoop
-            isLastData = i == len(resultDataList) -1
-            if isLastData:
-                # 最終結果
-                csvFile = 'rism_result.csv'
-                float_format = '% .10E'
-            else:
-                # 途中経過
-                csvFile = 'rism_result_loop{}.csv'.format(str(numLoop).zfill(numDigit))
-                float_format = '% .4E'
-
-            csvPath = directory + '/' + csvFile
-
-            # resultData取り出し
-            resultTableData, resultTableColumns = resultData.giveMergedFuncsData()
-
-            # 結合
-            tableData = np.hstack([inpTableData, resultTableData]) # shape: (numgrid, *)
-            columns = [*inpTableColumns, *resultTableColumns]
-            df = pd.DataFrame(tableData, columns=columns)
-
-            # csv書き出し
-            df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
-
-            # solve中に書き出していかないと
-            # メモリ量の関係で途中経過のData全てを保持できない場合がある
-            # -  4000点 *   3サイト * 13行列関数 * 10桁 -> 5644 KB
-            # - 10000点 * 100サイト * 13行列関数 *  5桁 -> 7,838,888 KB = 7.8 GB (推定)
-
-        # 最終結果のグラフ書き出し
-
-        # 途中経過のアニメーション書き出し
-        # https://qiita.com/yubais/items/c95ba9ff1b23dd33fde2
-
-        # - 統計量書き出し
 
 class RISMWriter():
+    """
+    solve中に書き出していかないと
+    メモリ量の関係で途中経過のData全てを保持できない場合がある
+    -  4000点 *   (3サイト * 13行列関数 = 88列)     * 10桁 -> 5644 KB
+    - 10000点 * (100サイト * 13行列関数 = 97,778列) *  5桁 -> 7,838,906 KB = 7.8 GB (推定)
+    なので、都度SolverクラスがWriterクラスを呼び出し、書き出す
+    """
+
     def __init__(self, saveDict):
         self.onlyFinal = saveDict.get('onlyFinal', false)
         self.interval =  saveDict.get('interval', 100)
         self.directory = saveDict.get('directory', './')
         self.maxSize = saveDict.get('maxSize', '20GB')
-
+        self.saveFileList = []
 
     def judgeInterval(self, numLoop):
         return numLoop % self.interval == 0
@@ -100,17 +60,44 @@ class RISMWriter():
     def saveOnlyFinal(self):
         return self.onlyFinal
 
+    def appendSaveFileList(self, filePath):
+        self.saveFileList.append(filePath)
+
+    def checkSaveFileSize(self):
+        # これまで出力したファイルのデータ量を計算し、それがmaxSizeを超えているかどうかを判定
+        pass
+
     def writeIntermediate(self, rismData):
         if self.onlyFinal:
             # 中間結果を保存しない場合
             return
-        if not self.judgeInterval(rismData.numLoop):
+        numLoop = rismData.numLoop
+        if not self.judgeInterval(numLoop):
             # intervalが合ってない場合
             return
-        pass
+
+        rismInpData = rismData.inpData
+        # RISMDataをDataFrameに変換
+        df = convertRISMDataToDataFrame(rismInpData, rismData)
+
+        # 出力先設定
+        csvFile = 'rism_result_loop{}.csv'.format(numLoop)
+        csvPath = directory + '/' + csvFile
+        self.appendSaveFileList(csvPath)
+        # 出力桁数
+        float_format = '% .3E'
+
+        # csv書き出し
+        df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
+
+        # アニメーション用データ作成
+        # 途中経過のアニメーション書き出し
+        # https://qiita.com/yubais/items/c95ba9ff1b23dd33fde2
 
     def writeFinal(self, rismData):
         pass
+        # 最終結果のグラフ書き出し
+        # 統計量書き出し
 
 
 class RISMInputData():
@@ -227,7 +214,7 @@ class RISMInputData():
         self.closure = closure
 
         # 書き出し時に用いる相関のラベル(sigma-tau)の作成
-        _snl = ['{}:{}'.format(b,s) for b,s in zip(belongList, siteNameList)]
+        _snl = ['{}@{}'.format(s,b) for s,b in zip(siteNameList, belongList)]
         # ベクトル用
         self.siteLabelList = _snl
         # 正方(非対称)行列用
@@ -236,7 +223,7 @@ class RISMInputData():
         self.sitesiteLabelListForSymmMatrix = ['{}-{}'.format(_snl[i],_snl[j]) for i in range(totalN) for j in range(i,totalN)]
         self.uniqIndexListForFlattenSymmMatrix = [i*totalN+j for i in range(totalN) for j in range(i,totalN)]
 
-    def giveMergedFuncsData(self):
+    def giveFuncsDict(self):
         # r, k, t_W, Us, Ul
         d = {
                 'r': [self.r, DataAnnotation.Scaler],
@@ -245,37 +232,8 @@ class RISMInputData():
                 'Us': [self.Us, DataAnnotation.SymmMatrix],
                 'Ul':[self.Ul, DataAnnotation.SymmMatrix]
             }
-        data, columns = convertToMergedFuncsData(self, d)
-        return data, columns
+        return d
 
-class GridData():
-    def __init__(self, r, dr, k, dk, ffttype=4):
-        self.numgrid = len(r)
-        self.r = r
-        self.dr = dr
-        self.k = k
-        self.dk = dk
-        self.ffttype = ffttype
-
-    def fft3d_spsymm(self, f):
-        """
-        f: shape: (numgrid, *, *), or (numgrid, *)
-        """
-        r = self.r
-        dr = self.dr
-        k = self.k
-        t_f = 4*np.pi/k[:,np.newaxis,np.newaxis] * dst(r[:,np.newaxis,np.newaxis] * f, type=self.ffttype, axis=0) / 2 * dr
-        return t_f
-
-    def ifft3d_spsymm(self, t_f):
-        """
-        t_f: shape: (numgrid, *, *), or (numgrid, *)
-        """
-        r = self.r
-        k = self.k
-        dk = self.dk
-        f = 1/(2*np.pi**2 * r[:,np.newaxis,np.newaxis]) * dst(k[:,np.newaxis,np.newaxis] * t_f, type=self.ffttype, axis=0) / 2 * dk
-        return f
 
 class DataAnnotation(Enum):
     """
@@ -287,19 +245,20 @@ class DataAnnotation(Enum):
     SquareMatrix = 3
     SymmMatrix = 4
 
-def convertToMergedFuncsData(inpData, funcsDict):
-    """
-    d = {'r': [r, Scaler], 'k': [k, Scaler], 't_W':[t_W, SymmMatrix], 'Us':[Us, SymmMatrix], 'Ul':[Ul, SymmMatrix]}
-    """
-    numgrid = inpData.numgrid
-    uniqIndexListForFlattenSymmMatrix = inpData.uniqIndexListForFlattenSymmMatrix
-    siteLabelList = inpData.siteLabelList
-    sslabelList = inpData.sitesiteLabelList
-    sslabelList_symm = inpData.sitesiteLabelListForSymmMatrix
+def convertRISMDataToDataFrame(rismInpData, rismData):
+    numgrid = rismInpData.numgrid
+    uniqIndexListForFlattenSymmMatrix = rismInpData.uniqIndexListForFlattenSymmMatrix
+    siteLabelList = rismInpData.siteLabelList
+    sslabelList = rismInpData.sitesiteLabelList
+    sslabelList_symm = rismInpData.sitesiteLabelListForSymmMatrix
+
+    inpDataDict = rismInpData.giveFuncsDict()
+    resultDataDict = rismData.giveFuncsDict()
+    dataDict = {**inpDataDict, **resultDataDict}
 
     columns = []
     data = []
-    for name, (value, annotation) in funcsDict.items():
+    for name, (value, annotation) in dataDict:
         value = value.reshape(numgrid, -1)
         if annotation is DataAnnotation.Scaler:
             # 結合の時のことを考慮して二次元配列に変えておく
@@ -321,9 +280,9 @@ def convertToMergedFuncsData(inpData, funcsDict):
         else:
             raise ValueError()
     # 結合
-    data = np.hstack(data) # shape: (numgrid, N(N+1)/2 * 3)
-
-    return data, columns
+    data = np.hstack(data) # shape: (numgrid, *)
+    df = pd.DataFrame(data, columns=columns)
+    return df
 
 
 class RISMData():
@@ -342,7 +301,7 @@ class RISMData():
         self.G = kwargs['G']
         self.Eta = kwargs['Eta']
 
-    def giveMergedFuncsData(self):
+    def giveFuncsDict(self):
         # fUl, t_C, t_H, t_X, C, H, G, Eta
         d = {
                 'fUl': [self.fUl, DataAnnotation.SymmMatrix],
@@ -354,8 +313,7 @@ class RISMData():
                 'G': [self.G, DataAnnotation.SymmMatrix],
                 'Eta': [self.Eta, DataAnnotation.SymmMatrix]
             }
-        data, columns = convertToMergedFuncsData(self.inpData, d)
-        return data, columns
+        return d
 
 class XRISMData(RISMData):
     def __init__(self):
@@ -373,11 +331,11 @@ class XRISMData(RISMData):
         self.Hs = None
         self.Etas = None
 
-    def giveMergedFuncsData(self):
-        data1, columns1 = super().giveMergedFuncsData()
+    def giveFuncsDict(self):
+        dic1 = super().giveFuncsDict()
 
         # t_Cl, t_Cs, t_Hl, t_Hs, t_Xl, Cl, Cs, Hl, Hs, Etas
-        d = {
+        dic2 = {
                 't_Cl': [self.fUl, DataAnnotation.SymmMatrix],
                 't_Cs': [self.t_C, DataAnnotation.SymmMatrix],
                 't_Hl': [self.t_H, DataAnnotation.SymmMatrix],
@@ -389,10 +347,8 @@ class XRISMData(RISMData):
                 'Hs': [self.H, DataAnnotation.SymmMatrix],
                 'Etas': [self.G, DataAnnotation.SymmMatrix]
             }
-        data2, columns2 = convertToMergedFuncsData(self.inpData, d)
-        data = np.hstack([data1, data2])
-        columns = [*columns1, *columns2]
-        return data, columns
+        d = {**dic1, **dic2}
+        return d
 
 
 def RISM_HNC():
