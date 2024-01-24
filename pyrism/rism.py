@@ -504,11 +504,116 @@ class XRISMSolver(RISMSolver):
     def __init__(self, configDict, closure, risminpdata):
         super().__init__(configDict, closure, risminpdata)
 
-    def initialize(self):
-        pass
 
     def solve(self):
-        pass
+        def __registerData(force=False):
+            if self.isSaveIntermediate or force:
+                t_C = t_Cl + t_Cs
+                t_H = t_Hl + t_Hs
+                C = Cl + Cs
+                H = Hl + Hs
+                Eta = H - C
+                t_X = t_W + P @ t_H
+                data = XRISMData(
+                        inpData=self.risminpdata,
+                        numLoop=numTotalLoop,
+                        maxError=maxError,
+                        isConverged=isConverged,
+                        chargeFactor=factor,
+                        fUl=fUl,
+                        t_C=t_C,
+                        t_H=t_H,
+                        t_X=t_X,
+                        C=C,
+                        H=H,
+                        G=H+1,
+                        Eta=Eta,
+                        #
+                        t_Cl = t_Cl,
+                        t_Cs = t_Cs,
+                        t_Hl = t_Hl,
+                        t_Hs = t_Hs,
+                        t_Xl = t_Xl,
+                        Cl = Cl,
+                        Cs = Cs,
+                        Hl = Hl,
+                        Hs = Hs,
+                        Etas = Etas
+                    )
+                self.rismdataList.append(data)
+            else:
+                return
+
+        self.rismdataList = []
+
+        I = self.risminpdata.I
+        P = self.risminpdata.P
+        t_W = self.risminpdata.t_W
+        Us = self.risminpdata.Us
+        Ul = self.risminpdata.Ul
+        t_Ul = self.risminpdata.t_Ul
+        grid = self.risminpdata.gridData
+
+        Etas0 = self.initializer.initializeEta0()
+
+        numTotalLoop = 0
+        for factor in self.chargeFactorList:
+            # 初期化
+            fUl = Ul * factor**2
+            t_fUl = t_Ul * factor**2
+            fU = Us + fUl
+            Etas = Etas0
+            isConverged = False
+
+            # 長距離part
+            Cl = fUl
+            t_Cl = t_fUl
+            t_Hl = t_W @ t_Cl @ t_W @ np.linalg.inv(I - P @ t_Cl @ t_W)
+            Hl = grid.ifft3d_spsymm(t_Hl)
+            t_Xl = t_W + P @ t_Hl
+            t_XlT = t_Xl.transpose(0,2,1) # 転置
+
+            # 短距離part
+            numLoop = 0
+            while True:
+                numLoop +=1
+                numTotalLoop += 1
+                Cs = np.exp(-Us+Hl+Etas) -(Hl+Etas) -1 # HNC closure
+                # フーリエ変換
+                t_Cs = grid.fft3d_spsymm(Cs)
+                # RISM式
+                t_Hs = t_XlT @ t_Cs @ t_Xl @ np.linalg.inv(I - P @ t_Cs @ t_Xl)
+                # 逆フーリエ変換
+                Hs = grid.ifft3d_spsymm(t_Hs)
+
+                newEtas = Hs - Cs
+                # 収束判定
+                maxError = np.max(newEtas - Etas)
+                if numLoop % 100 == 0:
+                    print('Factor: {}, Iter: {}, Error: {}'.format(factor, numLoop, maxError))
+                if maxError < self.converge:
+                    print('converged: Iter: {}'.format(numLoop))
+                    isConverged = True
+                    __registerData()
+                    break
+                elif numLoop >= self.maxIter:
+                    print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxIter, maxError))
+                    isConverged = False
+                    __registerData()
+                    break
+                if numTotalLoop % self.saveInterval == 0:
+                    # data生成
+                    __registerData()
+
+                # 更新
+                Etas = self.mixingParam * newEtas + (1-self.mixingParam) * Etas
+
+            # 初期値更新
+            Etas0 = Etas
+
+        # 最終結果は中間結果を残さない場合(not isSaveItermediate)にも残す(force=True)
+        if not self.isSaveIntermediate:
+            __registerData(force=True)
 
 
 
