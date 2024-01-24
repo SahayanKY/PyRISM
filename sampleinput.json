@@ -21,7 +21,12 @@
 			"chargeUp" : 0.25,
 			"converge" : 1e-10,
 			"maxIter" : 1000,
-			"saveInterval" : 100
+		},
+		"save" : {
+			"onlyFinal" : false,
+			"interval" : 100,
+			"directory" : "./",
+			"maxSize" : "20GB"
 		}
 	},
 	"3DRISM" : {

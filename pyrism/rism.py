@@ -86,6 +86,32 @@ class RISM():
 
         # - 統計量書き出し
 
+class RISMWriter():
+    def __init__(self, saveDict):
+        self.onlyFinal = saveDict.get('onlyFinal', false)
+        self.interval =  saveDict.get('interval', 100)
+        self.directory = saveDict.get('directory', './')
+        self.maxSize = saveDict.get('maxSize', '20GB')
+
+
+    def judgeInterval(self, numLoop):
+        return numLoop % self.interval == 0
+
+    def saveOnlyFinal(self):
+        return self.onlyFinal
+
+    def writeIntermediate(self, rismData):
+        if self.onlyFinal:
+            # 中間結果を保存しない場合
+            return
+        if not self.judgeInterval(rismData.numLoop):
+            # intervalが合ってない場合
+            return
+        pass
+
+    def writeFinal(self, rismData):
+        pass
+
 
 class RISMInputData():
     def __init__(self, rismDict, temperature, closure):
@@ -394,8 +420,8 @@ class RISMInitializer():
             return None
 
 class RISMSolver():
-    def __init__(self, configDict, closure, risminpdata):
-        shape = risminpdata.corrFuncShape
+    def __init__(self, configDict, closure, rismInpData, rismWriter):
+        shape = rismInpData.corrFuncShape
         iniMethod = configDict.get('initialze', "zeroization")
         initializer = RISMInitializer(shape, iniMethod)
         self.initializer = initializer
@@ -411,45 +437,46 @@ class RISMSolver():
         self.converge = configDict.get('converge', 1e-8)
         self.maxIter = configDict.get('maxIter', 1000)
 
-        self.saveInterval = configDict.get('saveInterval', None)
-        self.isSaveIntermediate = self.saveInterval is not None
-
         self.closure = closure
-        self.risminpdata = risminpdata
-
-        self.rismdataList = None
+        self.rismInpData = rismInpData
+        self.rismWriter = rismWriter
+        self.rismData = None
 
     def solve(self):
-        def __registerData(force=False):
-            if self.isSaveIntermediate or force:
-                t_X = t_W + P @ t_H
-                data = RISMData(
-                        inpData=self.risminpdata,
-                        numLoop=numTotalLoop,
-                        maxError=maxError,
-                        isConverged=isConverged,
-                        chargeFactor=factor,
-                        fUl=fUl,
-                        t_C=t_C,
-                        t_H=t_H,
-                        t_X=t_X,
-                        C=C,
-                        H=H,
-                        G=H+1,
-                        Eta=Eta
-                    )
-                self.rismdataList.append(data)
-            else:
+        def __registerData(final=False):
+            if not final and self.rismWriter.saveOnlyFinal():
                 return
 
-        self.rismdataList = []
+            t_X = t_W + P @ t_H
+            data = RISMData(
+                    inpData=self.rismInpData,
+                    numLoop=numTotalLoop,
+                    maxError=maxError,
+                    isConverged=isConverged,
+                    chargeFactor=factor,
+                    fUl=fUl,
+                    t_C=t_C,
+                    t_H=t_H,
+                    t_X=t_X,
+                    C=C,
+                    H=H,
+                    G=H+1,
+                    Eta=Eta
+                )
+            self.rismData = data
 
-        I = self.risminpdata.I
-        P = self.risminpdata.P
-        t_W = self.risminpdata.t_W
-        Us = self.risminpdata.Us
-        Ul = self.risminpdata.Ul
-        grid = self.risminpdata.gridData
+            if not final:
+                self.rismWriter.writeIntermediate(data)
+
+            else: # final
+                self.rismWriter.writeFinal(data)
+
+        I = self.rismInpData.I
+        P = self.rismInpData.P
+        t_W = self.rismInpData.t_W
+        Us = self.rismInpData.Us
+        Ul = self.rismInpData.Ul
+        grid = self.rismInpData.gridData
 
         Eta0 = self.initializer.initializeEta0()
 
@@ -481,16 +508,16 @@ class RISMSolver():
                 if maxError < self.converge:
                     print('converged: Iter: {}'.format(numLoop))
                     isConverged = True
-                    __registerData()
+                    __registerData(final=False)
                     break
                 elif numLoop >= self.maxIter:
                     print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxIter, maxError))
                     isConverged = False
-                    __registerData()
+                    __registerData(final=False)
                     break
-                if numTotalLoop % self.saveInterval == 0:
+                if self.rismWriter.judgeInterval(numTotalLoop):
                     # data生成
-                    __registerData()
+                    __registerData(final=False)
 
                 # 更新
                 Eta = self.mixingParam * newEta + (1-self.mixingParam) * Eta
@@ -498,9 +525,9 @@ class RISMSolver():
             # 初期値更新
             Eta0 = Eta
 
-        # 最終結果は中間結果を残さない場合(not isSaveItermediate)にも残す(force=True)
-        if not self.isSaveIntermediate:
-            __registerData(force=True)
+        # 最終結果のdata生成及び書き出し
+        __registerData(final=True)
+
 
     def giveResult(self):
         if self.rismdataList is None:
@@ -509,58 +536,61 @@ class RISMSolver():
         return self.rismdataList
 
 class XRISMSolver(RISMSolver):
-    def __init__(self, configDict, closure, risminpdata):
-        super().__init__(configDict, closure, risminpdata)
+    def __init__(self, configDict, closure, rismInpData, rismWriter):
+        super().__init__(configDict, closure, rismInpData, rismWriter)
 
 
     def solve(self):
-        def __registerData(force=False):
-            if self.isSaveIntermediate or force:
-                t_C = t_Cl + t_Cs
-                t_H = t_Hl + t_Hs
-                C = Cl + Cs
-                H = Hl + Hs
-                Eta = H - C
-                t_X = t_W + P @ t_H
-                data = XRISMData(
-                        inpData=self.risminpdata,
-                        numLoop=numTotalLoop,
-                        maxError=maxError,
-                        isConverged=isConverged,
-                        chargeFactor=factor,
-                        fUl=fUl,
-                        t_C=t_C,
-                        t_H=t_H,
-                        t_X=t_X,
-                        C=C,
-                        H=H,
-                        G=H+1,
-                        Eta=Eta,
-                        #
-                        t_Cl = t_Cl,
-                        t_Cs = t_Cs,
-                        t_Hl = t_Hl,
-                        t_Hs = t_Hs,
-                        t_Xl = t_Xl,
-                        Cl = Cl,
-                        Cs = Cs,
-                        Hl = Hl,
-                        Hs = Hs,
-                        Etas = Etas
-                    )
-                self.rismdataList.append(data)
-            else:
+        def __registerData(final=False):
+            if not final and self.rismWriter.saveOnlyFinal():
                 return
+            t_C = t_Cl + t_Cs
+            t_H = t_Hl + t_Hs
+            C = Cl + Cs
+            H = Hl + Hs
+            Eta = H - C
+            t_X = t_W + P @ t_H
+            data = XRISMData(
+                    inpData=self.rismInpData,
+                    numLoop=numTotalLoop,
+                    maxError=maxError,
+                    isConverged=isConverged,
+                    chargeFactor=factor,
+                    fUl=fUl,
+                    t_C=t_C,
+                    t_H=t_H,
+                    t_X=t_X,
+                    C=C,
+                    H=H,
+                    G=H+1,
+                    Eta=Eta,
+                    #
+                    t_Cl = t_Cl,
+                    t_Cs = t_Cs,
+                    t_Hl = t_Hl,
+                    t_Hs = t_Hs,
+                    t_Xl = t_Xl,
+                    Cl = Cl,
+                    Cs = Cs,
+                    Hl = Hl,
+                    Hs = Hs,
+                    Etas = Etas
+                )
+            self.rismData = data
 
-        self.rismdataList = []
+            if not final:
+                self.rismWriter.writeIntermediate(data)
 
-        I = self.risminpdata.I
-        P = self.risminpdata.P
-        t_W = self.risminpdata.t_W
-        Us = self.risminpdata.Us
-        Ul = self.risminpdata.Ul
-        t_Ul = self.risminpdata.t_Ul
-        grid = self.risminpdata.gridData
+            else: # final
+                self.rismWriter.writeFinal(data)
+
+        I = self.rismInpData.I
+        P = self.rismInpData.P
+        t_W = self.rismInpData.t_W
+        Us = self.rismInpData.Us
+        Ul = self.rismInpData.Ul
+        t_Ul = self.rismInpData.t_Ul
+        grid = self.rismInpData.gridData
 
         Etas0 = self.initializer.initializeEta0()
 
@@ -602,16 +632,16 @@ class XRISMSolver(RISMSolver):
                 if maxError < self.converge:
                     print('converged: Iter: {}'.format(numLoop))
                     isConverged = True
-                    __registerData()
+                    __registerData(final=False)
                     break
                 elif numLoop >= self.maxIter:
                     print('Maximum number of iterations exceeded: {}, Error: {}'.format(self.maxIter, maxError))
                     isConverged = False
-                    __registerData()
+                    __registerData(final=False)
                     break
-                if numTotalLoop % self.saveInterval == 0:
+                if self.rismWriter.judgeInterval(numTotalLoop):
                     # data生成
-                    __registerData()
+                    __registerData(final=False)
 
                 # 更新
                 Etas = self.mixingParam * newEtas + (1-self.mixingParam) * Etas
@@ -619,9 +649,9 @@ class XRISMSolver(RISMSolver):
             # 初期値更新
             Etas0 = Etas
 
-        # 最終結果は中間結果を残さない場合(not isSaveItermediate)にも残す(force=True)
-        if not self.isSaveIntermediate:
-            __registerData(force=True)
+        # 最終結果のdata生成及び書き出し
+        __registerData(final=True)
+
 
 
 
