@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import distance
 from scipy.linalg import block_diag
+from scipy.fft import dst
 
 class RISM():
     def __init__(self, rismDict, temperature, closure):
@@ -60,8 +61,8 @@ class RISM():
             resultTableData, resultTableColumns = resultData.giveMergedFuncsData()
 
             # 結合
-            columns = [*inpTableColumns, *resultTableColumns]
             tableData = np.hstack([inpTableData, resultTableData]) # shape: (numgrid, *)
+            columns = [*inpTableColumns, *resultTableColumns]
             df = pd.DataFrame(tableData, columns=columns)
 
             # csv書き出し
@@ -166,6 +167,7 @@ class RISMInputData():
         self.dr = dr
         self.k = k
         self.dk = dk
+        self.gridData = GridData(r,dr,k,dk,ffttype=4)
         self.numgrid = numgrid
 
         self.T = temperature
@@ -211,6 +213,35 @@ class RISMInputData():
             }
         data, columns = convertToMergedFuncsData(self, d)
         return data, columns
+
+class GridData():
+    def __init__(self, r, dr, k, dk, ffttype=4):
+        self.numgrid = len(r)
+        self.r = r
+        self.dr = dr
+        self.k = k
+        self.dk = dk
+        self.ffttype = ffttype
+
+    def fft3d_spsymm(self, f):
+        """
+        f: shape: (numgrid, *, *), or (numgrid, *)
+        """
+        r = self.r
+        dr = self.dr
+        k = self.k
+        t_f = 4*np.pi/k[:,np.newaxis,np.newaxis] * dst(r[:,np.newaxis,np.newaxis] * f, type=self.ffttype, axis=0) / 2 * dr
+        return t_f
+
+    def ifft3d_spsymm(self, t_f):
+        """
+        t_f: shape: (numgrid, *, *), or (numgrid, *)
+        """
+        r = self.r
+        k = self.k
+        dk = self.dk
+        f = 1/(2*np.pi**2 * r[:,np.newaxis,np.newaxis]) * dst(k[:,np.newaxis,np.newaxis] * t_f, type=self.ffttype, axis=0) / 2 * dk
+        return f
 
 class DataAnnotation(Enum):
     """
@@ -283,7 +314,7 @@ class RISMData():
                 'fUl': [self.fUl, DataAnnotation.SymmMatrix],
                 't_C': [self.t_C, DataAnnotation.SymmMatrix],
                 't_H': [self.t_H, DataAnnotation.SymmMatrix],
-                't_X': [self.t_X, DataAnnotation.SquareMatrix], # Xは非対象行列なのでSquare指定
+                't_X': [self.t_X, DataAnnotation.SquareMatrix], # Xは非対称行列なのでSquare指定
                 'C': [self.C, DataAnnotation.SymmMatrix],
                 'H': [self.H, DataAnnotation.SymmMatrix],
                 'G': [self.G, DataAnnotation.SymmMatrix],
@@ -309,7 +340,26 @@ class XRISMData(RISMData):
         self.Etas = None
 
     def giveMergedFuncsData(self):
-        pass
+        data1, columns1 = super().giveMergedFuncsData()
+
+        # t_Cl, t_Cs, t_Hl, t_Hs, t_Xl, Cl, Cs, Hl, Hs, Etas
+        d = {
+                't_Cl': [self.fUl, DataAnnotation.SymmMatrix],
+                't_Cs': [self.t_C, DataAnnotation.SymmMatrix],
+                't_Hl': [self.t_H, DataAnnotation.SymmMatrix],
+                't_Hs': [self.t_X, DataAnnotation.SymmMatrix],
+                't_Xl': [self.C, DataAnnotation.SquareMatrix], # Xは非対称行列なのでSquare指定
+                'Cl': [self.H, DataAnnotation.SymmMatrix],
+                'Cs': [self.G, DataAnnotation.SymmMatrix],
+                'Hl': [self.Eta, DataAnnotation.SymmMatrix],
+                'Hs': [self.H, DataAnnotation.SymmMatrix],
+                'Etas': [self.G, DataAnnotation.SymmMatrix]
+            }
+        data2, columns2 = convertToMergedFuncsData(self.inpData, d)
+        data = np.hstack([data1, data2])
+        columns = [*columns1, *columns2]
+        return data, columns
+
 
 def RISM_HNC():
     """
@@ -391,6 +441,7 @@ class RISMSolver():
         t_W = self.risminpdata.t_W
         Us = self.risminpdata.Us
         Ul = self.risminpdata.Ul
+        grid = self.risminpdata.gridData
 
         Eta0 = self.initializer.initializeEta0()
 
@@ -408,11 +459,11 @@ class RISMSolver():
                 numTotalLoop += 1
                 C = np.exp(-fU+Eta) -Eta -1 # HNC closure
                 # フーリエ変換
-                t_C = None
+                t_C = grid.fft3d_spsymm(C)
                 # RISM式
                 t_H = t_W @ t_C @ t_W @ np.linalg.inv(I - P @ t_C @ t_W)
                 # 逆フーリエ変換
-                H = None
+                H = grid.ifft3d_spsymm(t_H)
 
                 newEta = H - C
                 # 収束判定
