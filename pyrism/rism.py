@@ -1,6 +1,8 @@
 import json
+from enum import Enum
 
 import numpy as np
+import pandas as pd
 from scipy.spatial import distance
 from scipy.linalg import block_diag
 
@@ -34,6 +36,9 @@ class RISM():
         self.__resultDataList = self.__solver.giveResult()
 
     def write(self, directory):
+        if self.__resultDataList is None:
+            raise RuntimeError()
+
         inpData = self.__inpData
         resultDataList = self.__resultDataList
 
@@ -54,9 +59,13 @@ class RISM():
             # resultData取り出し
             resultTableData, resultTableColumns = resultData.giveMergedFuncsData()
 
-
+            # 結合
+            columns = [*inpTableColumns, *resultTableColumns]
+            tableData = np.hstack([inpTableData, resultTableData]) # shape: (numgrid, *)
+            df = pd.DataFrame(tableData, columns=columns)
 
             # csv書き出し
+            df.to_csv(csvPath, mode='w', index=False, float_format='% .10E')
 
 
 
@@ -68,12 +77,6 @@ class RISM():
 
         # - 統計量書き出し
 
-
-
-
-
-        somedata = self.__data.give()
-        # csvFileへ書き込み
 
 class RISMInputData():
     def __init__(self, rismDict, temperature, closure):
@@ -189,35 +192,74 @@ class RISMInputData():
 
         # 書き出し時に用いる相関のラベル(sigma-tau)の作成
         _snl = ['{}:{}'.format(b,s) for b,s in zip(belongList, siteNameList)]
-        # 非対称行列用
+        # ベクトル用
+        self.siteLabelList = _snl
+        # 正方(非対称)行列用
         self.sitesiteLabelList = ['{}-{}'.format(_snl[i],_snl[j]) for i in range(totalN) for j in range(totalN)]
         # 対称行列用
         self.sitesiteLabelListForSymmMatrix = ['{}-{}'.format(_snl[i],_snl[j]) for i in range(totalN) for j in range(i,totalN)]
-        self.uniqIndexListForFlattenSymmMatrix = [i*N+j for i in range(totalN) for j in range(i,totalN)]
+        self.uniqIndexListForFlattenSymmMatrix = [i*totalN+j for i in range(totalN) for j in range(i,totalN)]
 
     def giveMergedFuncsData(self):
         # r, k, t_W, Us, Ul
-        d = {'r': self.r, 'k': self.k, 't_W':self.t_W, 'Us':self.Us, 'Ul':self.Ul}
-        numgrid = self.numgrid
-        totalN = self.totalN
-        uniqIndexListForFlattenSymmMatrix = self.uniqIndexListForFlattenSymmMatrix
-        sslabelList_symm = self.sitesiteLabelListForSymmMatrix
-
-        columns = []
-        data = []
-        for name, value in d.items():
-            if name == 'r' or name == 'k':
-                # 結合の時のことを考慮して二次元配列に変えておく
-                columns.append((name,))
-                data.append(value[:,np.newaxis]) # shape: (numgrid, 1)
-            else:
-                # 対称行列は上半分だけ取り出して、平坦化する
-                columns.extend([(name,ss) for ss in sslabelList_symm])
-                data.append(value.reshape(numgrid, totalN**2)[:,uniqIndexListForFlattenSymmMatrix]) # shape: (numgrid, N(N+1)/2)
-        # 結合
-        data = np.hstack(data) # shape: (numgrid, N(N+1)/2 * 3)
-
+        d = {
+                'r': [self.r, DataAnnotation.Scaler],
+                'k': [self.k, DataAnnotation.Vector],
+                't_W': [self.t_W, DataAnnotation.SymmMatrix],
+                'Us': [self.Us, DataAnnotation.SymmMatrix],
+                'Ul':[self.Ul, DataAnnotation.SymmMatrix]
+            }
+        data, columns = convertToMergedFuncsData(self, d)
         return data, columns
+
+class DataAnnotation(Enum):
+    """
+    データ(ある量)がスカラー値なのか、ベクトル値なのか、対称行列なのかを区別するためのアノテーション
+    giveMergedFuncsData()にて用いる
+    """
+    Scaler = 1
+    Vector = 2
+    SquareMatrix = 3
+    SymmMatrix = 4
+
+def convertToMergedFuncsData(inpData, funcsDict):
+    """
+    d = {'r': [r, Scaler], 'k': [k, Scaler], 't_W':[t_W, SymmMatrix], 'Us':[Us, SymmMatrix], 'Ul':[Ul, SymmMatrix]}
+    """
+    numgrid = inpData.numgrid
+    uniqIndexListForFlattenSymmMatrix = inpData.uniqIndexListForFlattenSymmMatrix
+    siteLabelList = inpData.siteLabelList
+    sslabelList = inpData.sitesiteLabelList
+    sslabelList_symm = inpData.sitesiteLabelListForSymmMatrix
+
+    columns = []
+    data = []
+    for name, (value, annotation) in funcsDict.items():
+        value = value.reshape(numgrid, -1)
+        if annotation is DataAnnotation.Scaler:
+            # 結合の時のことを考慮して二次元配列に変えておく
+            columns.append((name,'-'))
+            data.append(value) # shape: (numgrid, 1)
+
+        elif annotation is DataAnnotation.Vector:
+            columns.extend([(name,s) for s in siteLabelList])
+            data.append(value) # shape: (numgrid, N)
+
+        elif annotation is DataAnnotation.SquareMatrix:
+            columns.extend([(name,ss) for ss in sslabelList])
+            data.append(value) # shape: (numgrid, N*N)
+
+        elif annotation is DataAnnotation.SymmMatrix:
+            # 対称行列は上半分だけ取り出して、平坦化する
+            columns.extend([(name,ss) for ss in sslabelList_symm])
+            data.append(value[:,uniqIndexListForFlattenSymmMatrix]) # shape: (numgrid, N(N+1)/2)
+        else:
+            raise ValueError()
+    # 結合
+    data = np.hstack(data) # shape: (numgrid, N(N+1)/2 * 3)
+
+    return data, columns
+
 
 class RISMData():
     def __init__(self, **kwargs):
@@ -238,30 +280,16 @@ class RISMData():
     def giveMergedFuncsData(self):
         # fUl, t_C, t_H, t_X, C, H, G, Eta
         d = {
-                'fUl': self.fUl,
-                't_C': self.t_C, 't_H':self.t_H, 't_X':self.t_X,
-                'C':self.C, 'H':self.H, 'G':self.G, 'Eta':self.Eta
+                'fUl': [self.fUl, DataAnnotation.SymmMatrix],
+                't_C': [self.t_C, DataAnnotation.SymmMatrix],
+                't_H': [self.t_H, DataAnnotation.SymmMatrix],
+                't_X': [self.t_X, DataAnnotation.SquareMatrix], # Xは非対象行列なのでSquare指定
+                'C': [self.C, DataAnnotation.SymmMatrix],
+                'H': [self.H, DataAnnotation.SymmMatrix],
+                'G': [self.G, DataAnnotation.SymmMatrix],
+                'Eta': [self.Eta, DataAnnotation.SymmMatrix]
             }
-        numgrid = self.inpData.numgrid
-        totalN = self.inpData.totalN
-        uniqIndexListForFlattenSymmMatrix = self.inpData.uniqIndexListForFlattenSymmMatrix
-        sslabelList = self.inpData.sitesiteLabelList
-        sslabelList_symm = self.inpData.sitesiteLabelListForSymmMatrix
-
-        columns = []
-        data = []
-        for name, value in d.items():
-            if name == 't_X':
-                # t_Xは非対称行列
-                columns.extend([(name,ss) for ss in sslabelList])
-                data.append(value.reshape(numgrid, totalN**2)) # shape: (numgrid, N*N)
-            else:
-                # 対称行列は上半分だけ取り出して、平坦化する
-                columns.extend([(name,ss) for ss in sslabelList_symm])
-                data.append(value.reshape(numgrid, totalN**2)[:,uniqIndexListForFlattenSymmMatrix]) # shape: (numgrid, N(N+1)/2)
-        # 結合
-        data = np.hstack(data) # shape: (numgrid, N(N+1)/2 * 3)
-
+        data, columns = convertToMergedFuncsData(self.inpData, d)
         return data, columns
 
 class XRISMData(RISMData):
