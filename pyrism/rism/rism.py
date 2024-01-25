@@ -27,6 +27,7 @@ class RISM():
             solver = XRISMSolver(configDict, closure, inpData)
         else:
             solver = RISMSolver(configDict, closure, inpData)
+            # TODO Writer実装が反映できていないので修正
 
         self.__rismDict = rismDict
         self.__inpData = inpData
@@ -39,6 +40,11 @@ class RISM():
         self.__solver.solve()
         self.__resultData = self.__solver.giveResult()
 
+    def giveResultData(self):
+        if self.__resultData is None:
+            raise RuntimeError()
+        return self.__inpData, self.__resultData
+
 
 class RISMWriter():
     """
@@ -47,10 +53,16 @@ class RISMWriter():
 
     solve中に書き出していかないと
     メモリ量の関係で途中経過のData全てを保持できない場合がある
-    -  4000点 *   (3サイト * 13行列関数 =     88列) * 7+10桁 ->      5,644 KB
-    - 10000点 * (100サイト * 13行列関数 = 97,778列) * 7+ 5桁 -> 11,066,691 KB = 10.6 GB (推定)
+    (仮実装で生成したcsvの実測値)
+    -  4000点 *   (3サイト * 13行列関数 =      78列) * 7+10桁 ->      5,644 KB
+    (推定)
+    - 10000点 * (100サイト * 21行列関数 = 106,050列) * 7+ 5桁 -> 13,541,769 KB = 12.9 GB
+    - 10000点 * (100サイト * 11行列関数 =  55,550列) * 7+ 3桁 ->  5,911,090 KB =  5.6 GB (出力する行列関数の種類を削減、桁数削減)
         - +1.*****E+1, -> 7+5桁の計算
     なので、都度SolverクラスがWriterクラスを呼び出し、書き出す
+
+    出力ファイルのサイズに関する仕様や削減策については後でまた考え直す
+    - サイトペアの特徴が似てないペア100組ぐらいまでに絞ればサイズを2桁落とすことができるのでその方向を検討してみる
     """
 
     def __init__(self, saveDict):
@@ -60,17 +72,17 @@ class RISMWriter():
 
         size = saveDict.get('maxFileSize', '1GB') # csvファイル1つ辺りのサイズ
         # 単位変換: Byte単位に変換
-        m = re.match(r'([0-9]+) *([kMGT]?)B', size)
+        m = re.match(r'([0-9]+) *([kKMGT]?)B', size)
         if m is None:
             raise ValueError()
-        exponentDict = {'': 0, 'k': 1, 'M': 2, 'G': 3, 'T': 4}
+        exponentDict = {'': 0, 'k': 1, 'K': 1, 'M': 2, 'G': 3, 'T': 4}
         self.__maxFileSize = int(m.groups()[0]) * 1024 ** exponentDict[m.groups()[1]]
 
         self.__notWrittenYet = True
         self.__digit_rough = 3 # 小数部桁数
         self.__digit_detail = 8
-        self.__float_format_rough = '% .3E'
-        self.__float_format_detail = '% .8E'
+        self.__float_format_rough = '% .{}E'.format(self.__digit_rough)
+        self.__float_format_detail = '% .{}E'.format(self.__digit_detail)
         self.__size_csv_rough = None
         self.__size_csv_detail = None
         self.__saveFileList = []
@@ -130,7 +142,7 @@ class RISMWriter():
         csvFile = 'rism_result_loop{}.csv'.format(numLoop)
         csvPath = self.__directory + '/' + csvFile
         # 出力桁数
-        float_format = '% .3E'
+        float_format = self.__float_format_rough
 
         # csv書き出し
         df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
@@ -157,12 +169,12 @@ class RISMWriter():
         # 出力先設定
         csvFile = 'rism_result.csv'
         csvPath = self.__directory + '/' + csvFile
-        self.appendSaveFileList(csvPath)
         # 出力桁数
-        float_format = '% .8E'
+        float_format = self.__float_format_detail
 
         # csv書き出し
         df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
+        self.appendSaveFileList(csvPath)
 
         # 途中経過のアニメーション書き出し
 
