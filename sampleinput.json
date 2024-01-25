@@ -26,7 +26,7 @@
 			"onlyFinal" : false,
 			"interval" : 100,
 			"directory" : "./",
-			"maxSize" : "20GB"
+			"maxFileSize" : "1GB"
 		}
 	},
 	"3DRISM" : {

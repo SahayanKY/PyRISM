@@ -1,4 +1,6 @@
 import json
+import re
+import os
 from enum import Enum
 
 import numpy as np
@@ -6,7 +8,7 @@ import pandas as pd
 from scipy.spatial import distance
 from scipy.linalg import block_diag
 
-from grid import GridData
+from rism.grid import GridData
 
 class RISM():
     def __init__(self, rismDict, temperature, closure):
@@ -30,45 +32,85 @@ class RISM():
         self.__inpData = inpData
         self.__isXRISM = isXRISM
         self.__solver = solver
-        self.__resultDataList = None
+        self.__resultData = None
 
     def solve(self):
         # 1D-RISM計算
         self.__solver.solve()
-        self.__resultDataList = self.__solver.giveResult()
+        self.__resultData = self.__solver.giveResult()
 
 
 class RISMWriter():
     """
+    CSV書き出しと統計量書き出しを行う
+    グラフ化については別にクラスを用意し、計算終了後に処理する形にする
+
     solve中に書き出していかないと
     メモリ量の関係で途中経過のData全てを保持できない場合がある
-    -  4000点 *   (3サイト * 13行列関数 = 88列)     * 10桁 -> 5644 KB
-    - 10000点 * (100サイト * 13行列関数 = 97,778列) *  5桁 -> 7,838,906 KB = 7.8 GB (推定)
+    -  4000点 *   (3サイト * 13行列関数 =     88列) * 7+10桁 ->      5,644 KB
+    - 10000点 * (100サイト * 13行列関数 = 97,778列) * 7+ 5桁 -> 11,066,691 KB = 10.6 GB (推定)
+        - +1.*****E+1, -> 7+5桁の計算
     なので、都度SolverクラスがWriterクラスを呼び出し、書き出す
     """
 
     def __init__(self, saveDict):
-        self.onlyFinal = saveDict.get('onlyFinal', false)
-        self.interval =  saveDict.get('interval', 100)
-        self.directory = saveDict.get('directory', './')
-        self.maxSize = saveDict.get('maxSize', '20GB')
-        self.saveFileList = []
+        self.__onlyFinal = saveDict.get('onlyFinal', False)
+        self.__interval =  saveDict.get('interval', 100)
+        self.__directory = saveDict.get('directory', './')
+
+        size = saveDict.get('maxFileSize', '1GB') # csvファイル1つ辺りのサイズ
+        # 単位変換: Byte単位に変換
+        m = re.match(r'([0-9]+) *([kMGT]?)B', size)
+        if m is None:
+            raise ValueError()
+        exponentDict = {'': 0, 'k': 1, 'M': 2, 'G': 3, 'T': 4}
+        self.__maxFileSize = int(m.groups()[0]) * 1024 ** exponentDict[m.groups()[1]]
+
+        self.__notWrittenYet = True
+        self.__digit_rough = 3 # 小数部桁数
+        self.__digit_detail = 8
+        self.__float_format_rough = '% .3E'
+        self.__float_format_detail = '% .8E'
+        self.__size_csv_rough = None
+        self.__size_csv_detail = None
+        self.__saveFileList = []
 
     def judgeInterval(self, numLoop):
-        return numLoop % self.interval == 0
+        return numLoop % self.__interval == 0
 
     def saveOnlyFinal(self):
-        return self.onlyFinal
+        return self.__onlyFinal
 
-    def appendSaveFileList(self, filePath):
-        self.saveFileList.append(filePath)
+    def __appendSaveFileList(self, filePath):
+        self.__saveFileList.append(filePath)
 
-    def checkSaveFileSize(self):
-        # これまで出力したファイルのデータ量を計算し、それがmaxSizeを超えているかどうかを判定
-        pass
+    def __checkFileSize(self, filePath):
+        """
+        実際出力した結果、超えていた場合は例外をスロー
+        """
+        # totalで何Byteか計算
+        size = os.path.getsize(filePath)
+        if size > self.__maxSize:
+            raise RuntimeError()
+
+    def __checkEstimatedFileSize(self, df):
+        numGrid = len(df.index)
+        numColumn = len(df.columns)
+        digit_rough = 3 # 小数部桁数
+        digit_detail = 8
+
+        self.__size_csv_rough = int(5644 * 1024 * (numGrid/4000) * (numColumn/88) * ((7+digit_rough)/(7+10)))
+        self.__size_csv_detail= int(5644 * 1024 * (numGrid/4000) * (numColumn/88) * ((7+digit_detail)/(7+10)))
+        if self.__size_csv_detail > self.__maxFileSize or self.__size_csv_rough > self.__maxFileSize:
+            raise RuntimeError()
 
     def writeIntermediate(self, rismData):
-        if self.onlyFinal:
+        """
+        途中経過の書き出し
+        - csv書き出し
+        - グラフのアニメーション作成
+        """
+        if self.__onlyFinal:
             # 中間結果を保存しない場合
             return
         numLoop = rismData.numLoop
@@ -80,23 +122,52 @@ class RISMWriter():
         # RISMDataをDataFrameに変換
         df = convertRISMDataToDataFrame(rismInpData, rismData)
 
+        # ファイルサイズの推定パラメータの設定
+        if self.__notWrittenYet:
+            self.__checkEstimatedFileSize(df)
+
         # 出力先設定
         csvFile = 'rism_result_loop{}.csv'.format(numLoop)
-        csvPath = directory + '/' + csvFile
-        self.appendSaveFileList(csvPath)
+        csvPath = self.__directory + '/' + csvFile
         # 出力桁数
         float_format = '% .3E'
 
         # csv書き出し
         df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
+        self.__appendSaveFileList(csvPath)
+        self.__checkFileSize(csvPath)
+        if self.__notWrittenYet:
+            self.__notWrittenYet = False
 
         # アニメーション用データ作成
-        # 途中経過のアニメーション書き出し
         # https://qiita.com/yubais/items/c95ba9ff1b23dd33fde2
+        # -> 別クラスに実装する
 
     def writeFinal(self, rismData):
-        pass
+        """
+        最終結果の書き出し
+        - csv書き出し
+        - グラフ作成
+        - 統計量計算
+        """
+        rismInpData = rismData.inpData
+        # RISMDataをDataFrameに変換
+        df = convertRISMDataToDataFrame(rismInpData, rismData)
+
+        # 出力先設定
+        csvFile = 'rism_result.csv'
+        csvPath = self.__directory + '/' + csvFile
+        self.appendSaveFileList(csvPath)
+        # 出力桁数
+        float_format = '% .8E'
+
+        # csv書き出し
+        df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
+
+        # 途中経過のアニメーション書き出し
+
         # 最終結果のグラフ書き出し
+
         # 統計量書き出し
 
 
@@ -486,10 +557,10 @@ class RISMSolver():
 
 
     def giveResult(self):
-        if self.rismdataList is None:
+        if self.rismData is None:
             raise RuntimeError()
 
-        return self.rismdataList
+        return self.rismData
 
 class XRISMSolver(RISMSolver):
     def __init__(self, configDict, closure, rismInpData, rismWriter):
