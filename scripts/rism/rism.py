@@ -104,7 +104,7 @@ class RISMWriter():
         """
         # totalで何Byteか計算
         size = os.path.getsize(filePath)
-        if size > self.__maxSize:
+        if size > self.__maxFileSize:
             raise RuntimeError()
 
     def __checkEstimatedFileSize(self, df):
@@ -176,7 +176,7 @@ class RISMWriter():
 
         # csv書き出し
         df.to_csv(csvPath, mode='w', index=False, float_format=float_format)
-        self.appendSaveFileList(csvPath)
+        self.__appendSaveFileList(csvPath)
 
         # 途中経過のアニメーション書き出し
 
@@ -230,7 +230,7 @@ class RISMInputData():
             raise ValueError()
         if belongList[0] != 1:
             raise ValueError()
-        if all([b1 <= b2 for b1,b2 in zip(belongList,belongList[1:])]):
+        if not all([b1 <= b2 for b1,b2 in zip(belongList,belongList[1:])]):
             raise ValueError()
         if len(belongList) != totalN:
             raise ValueError()
@@ -312,7 +312,7 @@ class RISMInputData():
         # r, k, t_W, Us, Ul
         d = {
                 'r': [self.r, DataAnnotation.Scaler],
-                'k': [self.k, DataAnnotation.Vector],
+                'k': [self.k, DataAnnotation.Scaler],
                 't_W': [self.t_W, DataAnnotation.SymmMatrix],
                 'Us': [self.Us, DataAnnotation.SymmMatrix],
                 'Ul':[self.Ul, DataAnnotation.SymmMatrix]
@@ -343,7 +343,7 @@ def convertRISMDataToDataFrame(rismInpData, rismData):
 
     columns = []
     data = []
-    for name, (value, annotation) in dataDict:
+    for name, (value, annotation) in dataDict.items():
         value = value.reshape(numgrid, -1)
         if annotation is DataAnnotation.Scaler:
             # 結合の時のことを考慮して二次元配列に変えておく
@@ -366,6 +366,9 @@ def convertRISMDataToDataFrame(rismInpData, rismData):
             raise ValueError()
     # 結合
     data = np.hstack(data) # shape: (numgrid, *)
+    # MultiIndex
+    columns = [[t[0] for t in columns], [t[1] for t in columns]]
+    columns = pd.MultiIndex.from_arrays(columns, names=('name', 'site'))
     df = pd.DataFrame(data, columns=columns)
     return df
 
@@ -401,36 +404,36 @@ class RISMData():
         return d
 
 class XRISMData(RISMData):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-        self.t_Cl = None
-        self.t_Cs = None
-        self.t_Hl = None
-        self.t_Hs = None
-        self.t_Xl = None
+        self.t_Cl = kwargs['t_Cl']
+        self.t_Cs = kwargs['t_Cs']
+        self.t_Hl = kwargs['t_Hl']
+        self.t_Hs = kwargs['t_Hs']
+        self.t_Xl = kwargs['t_Xl']
 
-        self.Cl = None
-        self.Cs = None
-        self.Hl = None
-        self.Hs = None
-        self.Etas = None
+        self.Cl = kwargs['Cl']
+        self.Cs = kwargs['Cs']
+        self.Hl = kwargs['Hl']
+        self.Hs = kwargs['Hs']
+        self.Etas = kwargs['Etas']
 
     def giveFuncsDict(self):
         dic1 = super().giveFuncsDict()
 
         # t_Cl, t_Cs, t_Hl, t_Hs, t_Xl, Cl, Cs, Hl, Hs, Etas
         dic2 = {
-                't_Cl': [self.fUl, DataAnnotation.SymmMatrix],
-                't_Cs': [self.t_C, DataAnnotation.SymmMatrix],
-                't_Hl': [self.t_H, DataAnnotation.SymmMatrix],
-                't_Hs': [self.t_X, DataAnnotation.SymmMatrix],
-                't_Xl': [self.C, DataAnnotation.SquareMatrix], # Xは非対称行列なのでSquare指定
-                'Cl': [self.H, DataAnnotation.SymmMatrix],
-                'Cs': [self.G, DataAnnotation.SymmMatrix],
-                'Hl': [self.Eta, DataAnnotation.SymmMatrix],
-                'Hs': [self.H, DataAnnotation.SymmMatrix],
-                'Etas': [self.G, DataAnnotation.SymmMatrix]
+                't_Cl': [self.t_Cl, DataAnnotation.SymmMatrix],
+                't_Cs': [self.t_Cs, DataAnnotation.SymmMatrix],
+                't_Hl': [self.t_Hl, DataAnnotation.SymmMatrix],
+                't_Hs': [self.t_Hs, DataAnnotation.SymmMatrix],
+                't_Xl': [self.t_Xl, DataAnnotation.SquareMatrix], # Xは非対称行列なのでSquare指定
+                'Cl': [self.Cl, DataAnnotation.SymmMatrix],
+                'Cs': [self.Cs, DataAnnotation.SymmMatrix],
+                'Hl': [self.Hl, DataAnnotation.SymmMatrix],
+                'Hs': [self.Hs, DataAnnotation.SymmMatrix],
+                'Etas': [self.Etas, DataAnnotation.SymmMatrix]
             }
         d = {**dic1, **dic2}
         return d
@@ -545,9 +548,9 @@ class RISMSolver():
                 # 収束判定
                 maxError = np.max(newEta - Eta)
                 if numLoop % 100 == 0:
-                    print('Factor: {}, Iter: {}, Error: {}'.format(factor, numLoop, maxError))
+                    print('TotalIter: {}, Factor: {}, Iter: {}, Error: {}'.format(numTotalLoop, factor, numLoop, maxError))
                 if maxError < self.converge:
-                    print('converged: Iter: {}'.format(numLoop))
+                    print('converged: TotalIter: {}, Factor: {}, Iter: {}'.format(numTotalLoop, factor, numLoop))
                     isConverged = True
                     __registerData(final=False)
                     break
@@ -645,8 +648,8 @@ class XRISMSolver(RISMSolver):
             isConverged = False
 
             # 長距離part
-            Cl = fUl
-            t_Cl = t_fUl
+            Cl = - fUl
+            t_Cl = - t_fUl
             t_Hl = t_W @ t_Cl @ t_W @ np.linalg.inv(I - P @ t_Cl @ t_W)
             Hl = grid.ifft3d_spsymm(t_Hl)
             t_Xl = t_W + P @ t_Hl
@@ -669,9 +672,9 @@ class XRISMSolver(RISMSolver):
                 # 収束判定
                 maxError = np.max(newEtas - Etas)
                 if numLoop % 100 == 0:
-                    print('Factor: {}, Iter: {}, Error: {}'.format(factor, numLoop, maxError))
+                    print('TotalIter: {}, Factor: {}, Iter: {}, Error: {}'.format(numTotalLoop, factor, numLoop, maxError))
                 if maxError < self.converge:
-                    print('converged: Iter: {}'.format(numLoop))
+                    print('converged: TotalIter: {}, Factor: {}, Iter: {}'.format(numTotalLoop, factor, numLoop))
                     isConverged = True
                     __registerData(final=False)
                     break

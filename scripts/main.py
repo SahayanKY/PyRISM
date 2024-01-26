@@ -1,6 +1,9 @@
-from rism import RISM
+import sys
+import json
 
-# python main.py input.json
+from rism.rism import RISM
+
+# pyrism input.json
 
 # インプット読み込み
 inputFile = sys.argv[1]
