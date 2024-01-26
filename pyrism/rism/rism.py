@@ -15,19 +15,21 @@ class RISM():
         # json読み込み
         #jsonDict = json.load(open(jsonFile, 'r'))
         # .....
+        configDict = rismDict['configure']
+        saveDict = rismDict['save']
 
         # inpオブジェクト生成
         inpData = RISMInputData(rismDict, temperature, closure)
+        # writerオブジェクト生成
+        writer = RISMWriter(saveDict)
 
         # RISMの種類を判別
-        configDict = rismDict['configure']
         isXRISM = configDict.get('XRISM', True)
         # solverオブジェクト生成
         if isXRISM:
-            solver = XRISMSolver(configDict, closure, inpData)
+            solver = XRISMSolver(configDict, closure, inpData, writer)
         else:
-            solver = RISMSolver(configDict, closure, inpData)
-            # TODO Writer実装が反映できていないので修正
+            solver = RISMSolver(configDict, closure, inpData, writer)
 
         self.__rismDict = rismDict
         self.__inpData = inpData
