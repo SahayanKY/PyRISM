@@ -2,13 +2,30 @@ import numpy as np
 from scipy.fft import dst
 
 class GridData():
-    def __init__(self, r, dr, k, dk, ffttype=4):
-        self.numgrid = len(r)
-        self.__r = r
-        self.__dr = dr
-        self.__k = k
-        self.__dk = dk
+    def __init__(self, dr=None, numgrid=None, ffttype=None):
+        if dr is None or numgrid is None:
+            raise ValueError()
+        if ffttype is None:
+            ffttype = 4
+
+        self.__numgrid = numgrid
         self.__ffttype = ffttype
+        self.__dr = dr
+
+        # ffttypeに応じてグリッド生成
+        # 暫定的にffttype4の場合を記述
+        self.__r = (np.arange(numgrid) + 0.5) * dr
+        self.__k = (np.arange(numgrid) + 0.5) * dk
+        self.__dk = np.pi / dr / numgrid
+
+    def give_r(self):
+        return self.__r
+    def give_k(self):
+        return self.__k
+    def give_dr(self):
+        return self.__dr
+    def give_dk(self):
+        return self.__dk
 
     def fft3d_spsymm(self, f):
         """
