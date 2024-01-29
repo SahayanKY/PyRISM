@@ -9,6 +9,7 @@ from scipy.spatial import distance
 from scipy.linalg import block_diag
 
 from rism.grid import GridData
+from rism.potential import *
 
 class RISM():
     def __init__(self, rismDict, temperature, closure):
@@ -195,10 +196,11 @@ class RISMInputData():
         # グリッド情報読み込み
         dr = rismDict['discretize']['dr'] # 刻み幅: A
         numgrid = rismDict['discretize']['n'] # グリッド数
-        # DST(type4)に合わせてグリッド生成
-        dk = np.pi / dr / numgrid # 刻み幅: A^-1
-        r = (np.arange(numgrid) + 0.5) * dr # shape: (numgrid,) # 動径座標: A
-        k = (np.arange(numgrid) + 0.5) * dk # shape: (numgrid,) # 動径座標: A^-1
+        ffttype = rismDict['discretize'].get('ffttype', None) # 離散フーリエ変換タイプ
+        gridData = GridData(dr=dr, numgrid=numgrid, ffttype=ffttype)
+        r = gridData.give_r # shape: (numgrid,) # 動径座標: A
+        k = gridData.give_k # shape: (numgrid,) # 動径座標: A^-1
+        dk = gridData.give_dk # 刻み幅: A^-1
 
         # 溶媒データ読み込み
         solventDict = rismDict['solvent']
@@ -255,17 +257,11 @@ class RISMInputData():
 
         # サイト間短距離ポテンシャル行列: [無次元]: shape: (numgrid, totalN, totalN)
         # Lorentz-Berthelot則
-        Sigma = (sigma[:,np.newaxis] + sigma) / 2           # shape: (totalN,totalN) # LJ sigma_ij
-        Eps = np.sqrt(eps[:,np.newaxis]*eps)                # shape: (totalN,totalN) # LJ eps_ij
-        __sigmar6 = (Sigma / r[:,np.newaxis,np.newaxis])**6 # shape: (numgrid, totalN, totalN)
-        Us = beta * 4 * Eps * (__sigmar6**2 - __sigmar6)
+        Us = generateLennardJonesPotMatrix(sigma, sigma, eps, eps, r, beta)
 
         # サイト間長距離ポテンシャル行列: [無次元]: shape: (numgrid, totalN, totalN)
-        # 電荷行列: A: shape: (totalN,totalN)
-        ZZ = z[:,np.newaxis] * z
-        __ZZ = beta * 332.053 * ZZ
-        Ul = __ZZ / r[:,np.newaxis,np.newaxis]
-        t_Ul = __ZZ * 4*np.pi / (k[:,np.newaxis,np.newaxis]**2)
+        Ul = generateCoulombPotMatrix(z, z, r, beta)
+        t_Ul = generateFourierSpaceCoulombPotMatrix(z, z, k, beta)
 
         # -------------------------------------
         # インスタンス初期化
@@ -273,7 +269,7 @@ class RISMInputData():
         self.dr = dr
         self.k = k
         self.dk = dk
-        self.gridData = GridData(r,dr,k,dk,ffttype=4)
+        self.gridData = gridData
         self.numgrid = numgrid
 
         self.T = temperature
@@ -282,10 +278,7 @@ class RISMInputData():
         self.rhos = rhos
         self.belongList = belongList
         self.siteNameList = siteNameList
-        self.Sigma = Sigma
-        self.Eps = Eps
         self.z = z
-        self.ZZ = ZZ
         self.totalN = totalN
 
         self.I = I
@@ -466,7 +459,7 @@ class RISMInitializer():
 class RISMSolver():
     def __init__(self, configDict, closure, rismInpData, rismWriter):
         shape = rismInpData.corrFuncShape
-        iniMethod = configDict.get('initialze', "zeroization")
+        iniMethod = configDict.get('initialize', "zeroization")
         initializer = RISMInitializer(shape, iniMethod)
         self.initializer = initializer
 
