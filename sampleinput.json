@@ -18,9 +18,9 @@
 		"configure" : {
 			"XRISM" : true,
 			"initialize" : "zeroization",
-			"mixingParam" : 0.3,
 			"chargeUp" : 0.25,
 			"converge" : 1e-10,
+			"mixingParam" : 0.3,
 			"maxIter" : 1000
 		},
 		"save" : {

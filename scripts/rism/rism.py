@@ -194,13 +194,10 @@ class RISMInputData():
 
         # json読み込み
         # グリッド情報読み込み
-        dr = rismDict['discretize']['dr'] # 刻み幅: A
-        numgrid = rismDict['discretize']['n'] # グリッド数
-        ffttype = rismDict['discretize'].get('ffttype', None) # 離散フーリエ変換タイプ
-        gridData = GridData(dr=dr, numgrid=numgrid, ffttype=ffttype)
-        r = gridData.give_r # shape: (numgrid,) # 動径座標: A
-        k = gridData.give_k # shape: (numgrid,) # 動径座標: A^-1
-        dk = gridData.give_dk # 刻み幅: A^-1
+        gridData = GridData(rismDict['discretize'])
+        numgrid = gridData.numgrid # グリッド数
+        r = gridData.r # shape: (numgrid,) # 動径座標: A
+        k = gridData.k # shape: (numgrid,) # 動径座標: A^-1
 
         # 溶媒データ読み込み
         solventDict = rismDict['solvent']
@@ -265,12 +262,7 @@ class RISMInputData():
 
         # -------------------------------------
         # インスタンス初期化
-        self.r = r
-        self.dr = dr
-        self.k = k
-        self.dk = dk
         self.gridData = gridData
-        self.numgrid = numgrid
 
         self.T = temperature
         self.beta = beta
@@ -304,8 +296,8 @@ class RISMInputData():
     def giveFuncsDict(self):
         # r, k, t_W, Us, Ul
         d = {
-                'r': [self.r, DataAnnotation.Scaler],
-                'k': [self.k, DataAnnotation.Scaler],
+                'r': [self.gridData.r, DataAnnotation.Scaler],
+                'k': [self.gridData.k, DataAnnotation.Scaler],
                 't_W': [self.t_W, DataAnnotation.SymmMatrix],
                 'Us': [self.Us, DataAnnotation.SymmMatrix],
                 'Ul':[self.Ul, DataAnnotation.SymmMatrix]
@@ -444,8 +436,9 @@ def RISM_HNC():
     pass
 
 class RISMInitializer():
-    def __init__(self, shape, method):
-        self.shape = shape
+    def __init__(self, rismInpData, method):
+        self.rismInpData = rismInpData
+        self.shape = rismInpData.corrFuncShape
         self.method = method
 
     def initializeEta0(self):
@@ -458,9 +451,8 @@ class RISMInitializer():
 
 class RISMSolver():
     def __init__(self, configDict, closure, rismInpData, rismWriter):
-        shape = rismInpData.corrFuncShape
         iniMethod = configDict.get('initialize', "zeroization")
-        initializer = RISMInitializer(shape, iniMethod)
+        initializer = RISMInitializer(rismInpData, iniMethod)
         self.initializer = initializer
 
         self.mixingParam = configDict.get('mixingParam', 0.5)
