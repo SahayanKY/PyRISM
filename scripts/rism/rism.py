@@ -301,9 +301,9 @@ class RISMSolver():
                 # 収束判定
                 maxError = np.max(newEta - Eta)
                 if numLoop % 100 == 0:
-                    print('TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEta: {:.2e}'.format(numTotalLoop, factor, numLoop, maxError, (np.min(newEta,np.max(newEta)))))
+                    print('TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEta: ({:.2e}, {:.2e})'.format(numTotalLoop, factor, numLoop, maxError, np.min(newEta),np.max(newEta)))
                 if maxError < self.converge:
-                    print('converged: TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEta: {:.2e}'.format(numTotalLoop, factor, numLoop, maxError, (np.min(newEta,np.max(newEta)))))
+                    print('converged: TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEta: ({:.2e}, {:.2e})'.format(numTotalLoop, factor, numLoop, maxError, np.min(newEta),np.max(newEta)))
                     isConverged = True
                     __registerData(final=False)
                     break
@@ -426,9 +426,9 @@ class XRISMSolver(RISMSolver):
                 # 収束判定
                 maxError = np.max(newEtas - Etas)
                 if numLoop % 100 == 0:
-                    print('TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEtas: {:.2e}'.format(numTotalLoop, factor, numLoop, maxError, (np.min(newEtas,np.max(newEtas)))))
+                    print('TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEtas: ({:.2e}, {:.2e})'.format(numTotalLoop, factor, numLoop, maxError, np.min(newEtas),np.max(newEtas)))
                 if maxError < self.converge:
-                    print('converged: TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEtas: {:.2e}'.format(numTotalLoop, factor, numLoop, maxError, (np.min(newEtas,np.max(newEtas)))))
+                    print('converged: TotalIter: {}, Factor: {}, Iter: {}, Error: {:.6e}, RangeEtas: ({:.2e}, {:.2e})'.format(numTotalLoop, factor, numLoop, maxError, np.min(newEtas),np.max(newEtas)))
                     isConverged = True
                     __registerData(final=False)
                     break
