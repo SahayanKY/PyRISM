@@ -29,6 +29,7 @@ class Closure():
         return self.__closureFunc(**kwargs)
 
     def __selectFunc(self, closureType, rismType):
+        # moduleの先頭でimportすると循環importになるのでこのタイミングでimportする
         from rism.rism import RISMType
         if rismType is RISMType.RISM1dN or rismType is RISMType.RISM3d:
             # 通常の1D-RISMと3D-RISMの場合
