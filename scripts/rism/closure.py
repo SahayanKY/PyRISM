@@ -6,6 +6,7 @@ class ClosureType(Enum):
     HNC = 1
     KH  = 2
     PY  = 3
+    MSA = 4
 
 
 def parseClosureType(rootDict):
@@ -16,6 +17,8 @@ def parseClosureType(rootDict):
         return ClosureType.KH
     elif typestr == 'PY':
         return ClosureType.PY
+    elif typestr == 'MSA':
+        return ClosureType.MSA
     else:
         raise ValueError()
 
@@ -39,6 +42,8 @@ class Closure():
                 return KHclosure
             elif closureType is ClosureType.PY:
                 return PYclosure
+            elif closureType is ClosureType.MSA:
+                return MSAclosure
 
         elif rismType is RISMType.RISM1dX:
             # XRISMの場合
@@ -48,8 +53,15 @@ class Closure():
                 return KHclosure_XRISM
             elif closureType is ClosureType.PY:
                 return PYclosure_XRISM
+            elif closureType is ClosureType.MSA:
+                return MSAclosure_XRISM
 
+        raise ValueError()
 
+"""
+https://core.ac.uk/download/pdf/42591811.pdf
+https://pubs.acs.org/doi/epdf/10.1021/acs.macromol.8b00011
+"""
 def HNCclosure(**kwargs):
     """
     Eta -> C
@@ -81,6 +93,16 @@ def PYclosure(**kwargs):
     U = Us + Ul
     return np.exp(-U) * (1+Eta) -Eta -1
 
+def MSAclosure(**kwargs):
+    """
+    Eta -> C
+
+    """
+    Us = kwargs['Us']
+    Ul = kwargs['Ul']
+    U = Us + Ul
+    return -U
+
 def HNCclosure_XRISM(**kwargs):
     """
     Etas -> Cs
@@ -110,5 +132,12 @@ def PYclosure_XRISM(**kwargs):
     Etas = kwargs['Etas']
     U = Us + Ul
     return np.exp(-U) * (1 + Etas + Hl + Ul) -(Hl+Etas) -1
+
+def MSAclosure_XRISM(**kwargs):
+    """
+    Etas -> Cs
+    """
+    Us = kwargs['Us']
+    return -Us
 
 
