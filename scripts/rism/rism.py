@@ -28,12 +28,14 @@ class RISM():
         saveDict = rismDict['save']
         # RISMの種類を判別
         rismTypeStr = configDict.get('RISMType', "XRISM")
-        if rismTypeStr is 'RISM':
+        if rismTypeStr == 'RISM':
             rismType = RISMType.RISM1dN
             solvercls = RISMSolver
-        elif rismTypeStr is 'XRISM':
+        elif rismTypeStr == 'XRISM':
             rismType = RISMType.RISM1dX
             solvercls = XRISMSolver
+        else:
+            raise ValueError()
 
         # closureオブジェクト生成
         closure = Closure(closureType, rismType)
@@ -46,7 +48,7 @@ class RISM():
 
         self.__rismDict = rismDict
         self.__inpData = inpData
-        self.__isXRISM = isXRISM
+        self.__rismType = rismType
         self.__solver = solver
         self.__resultData = None
 

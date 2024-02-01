@@ -2,9 +2,6 @@ from enum import Enum
 
 import numpy as np
 
-from rism.rism import RISMType
-
-
 class ClosureType(Enum):
     HNC = 1
     KH  = 2
@@ -13,11 +10,11 @@ class ClosureType(Enum):
 
 def parseClosureType(rootDict):
     typestr = rootDict.get('closure', 'HNC')
-    if typestr is 'HNC':
+    if typestr == 'HNC':
         return ClosureType.HNC
-    elif typestr is 'KH':
+    elif typestr == 'KH':
         return ClosureType.KH
-    elif typestr is 'PY':
+    elif typestr == 'PY':
         return ClosureType.PY
     else:
         raise ValueError()
@@ -32,6 +29,7 @@ class Closure():
         return self.__closureFunc(**kwargs)
 
     def __selectFunc(self, closureType, rismType):
+        from rism.rism import RISMType
         if rismType is RISMType.RISM1dN or rismType is RISMType.RISM3d:
             # 通常の1D-RISMと3D-RISMの場合
             if closureType is ClosureType.HNC:

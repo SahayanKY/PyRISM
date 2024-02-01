@@ -140,7 +140,7 @@ class DataAnnotation(Enum):
     SymmMatrix = 4
 
 def convertRISMDataToDataFrame(rismInpData, rismData):
-    numgrid = rismInpData.numgrid
+    numgrid = rismInpData.gridData.numgrid
     uniqIndexListForFlattenSymmMatrix = rismInpData.uniqIndexListForFlattenSymmMatrix
     siteLabelList = rismInpData.siteLabelList
     sslabelList = rismInpData.sitesiteLabelList
