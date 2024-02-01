@@ -287,7 +287,7 @@ class RISMSolver():
             while True:
                 numLoop +=1
                 numTotalLoop += 1
-                C = closure.apply(U=fU, Eta=Eta)
+                C = closure.apply(Us=Us, Ul=fUl, Eta=Eta)
                 # フーリエ変換
                 t_C = grid.fft3d_spsymm(C)
                 # RISM式
@@ -412,7 +412,7 @@ class XRISMSolver(RISMSolver):
             while True:
                 numLoop +=1
                 numTotalLoop += 1
-                Cs = closure.apply(Us=Us, Hl=Hl, Etas=Etas)
+                Cs = closure.apply(Us=Us, Ul=fUl, Hl=Hl, Etas=Etas)
                 # フーリエ変換
                 t_Cs = grid.fft3d_spsymm(Cs)
                 # RISM式

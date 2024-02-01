@@ -55,9 +55,32 @@ def HNCclosure(**kwargs):
     """
     Eta -> C
     """
-    U = kwargs['U']
+    Us = kwargs['Us']
+    Ul = kwargs['Ul']
     Eta = kwargs['Eta']
+    U = Us + Ul
     return np.exp(-U+Eta) -Eta -1
+
+def KHclosure(**kwargs):
+    """
+    Eta -> C
+    """
+    Us = kwargs['Us']
+    Ul = kwargs['Ul']
+    Eta = kwargs['Eta']
+    U = Us + Ul
+    d = -U + Eta
+    return (np.exp(d)-1) * np.heaviside(-d,0.5) + d * np.heaviside(d,0.5) -Eta
+
+def PYclosure(**kwargs):
+    """
+    Eta -> C
+    """
+    Us = kwargs['Us']
+    Ul = kwargs['Ul']
+    Eta = kwargs['Eta']
+    U = Us + Ul
+    return np.exp(-U) * (1+Eta) -Eta -1
 
 def HNCclosure_XRISM(**kwargs):
     """
@@ -67,3 +90,26 @@ def HNCclosure_XRISM(**kwargs):
     Hl = kwargs['Hl']
     Etas = kwargs['Etas']
     return np.exp(-Us+Hl+Etas) -(Hl+Etas) -1
+
+def KHclosure_XRISM(**kwargs):
+    """
+    Etas -> Cs
+    """
+    Us = kwargs['Us']
+    Hl = kwargs['Hl']
+    Etas = kwargs['Etas']
+    d = -Us + Hl + Etas
+    return (np.exp(d)-1) * np.heaviside(-d,0.5) + d * np.heaviside(d,0.5) -(Hl+Etas)
+
+def PYclosure_XRISM(**kwargs):
+    """
+    Etas -> Cs
+    """
+    Us = kwargs['Us']
+    Ul = kwargs['Ul']
+    Hl = kwargs['Hl']
+    Etas = kwargs['Etas']
+    U = Us + Ul
+    return np.exp(-U) * (1 + Etas + Hl + Ul) -(Hl+Etas) -1
+
+
