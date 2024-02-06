@@ -7,9 +7,24 @@ class GridData():
         dr = gridDict['dr'] # 刻み幅: A
         ffttype = gridDict.get('ffttype', 4) # 離散フーリエ変換タイプ
 
-        dk = np.pi / dr / numgrid
-        r = (np.arange(numgrid) + 0.5) * dr
-        k = (np.arange(numgrid) + 0.5) * dk
+        if ffttype == 1:
+            dk = np.pi / dr / (numgrid+1)
+            r = (np.arange(numgrid) + 1) * dr
+            k = (np.arange(numgrid) + 1) * dk
+        elif ffttype == 2:
+            dk = np.pi / dr / numgrid
+            r = (np.arange(numgrid) + 0.5) * dr
+            k = (np.arange(numgrid) + 1) * dk
+        elif ffttype == 3:
+            dk = np.pi / dr / numgrid
+            r = (np.arange(numgrid) + 1) * dr
+            k = (np.arange(numgrid) + 0.5) * dk
+        elif ffttype == 4:
+            dk = np.pi / dr / numgrid
+            r = (np.arange(numgrid) + 0.5) * dr
+            k = (np.arange(numgrid) + 0.5) * dk
+        else:
+            raise ValueError()
 
         self.numgrid = numgrid
         self.__ffttype = ffttype
