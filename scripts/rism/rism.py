@@ -394,6 +394,7 @@ class XRISMSolver(RISMSolver):
 
         Etas0 = self.initializer.initializeEta0()
         Cs = self.initializer.initializeEta0() # TODO 別のメソッドを定義する
+        Hs = self.initializer.initializeEta0() # TODO 別のメソッドを定義する
 
         numTotalLoop = 0
         for factor in self.chargeFactorList:
