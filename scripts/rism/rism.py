@@ -385,25 +385,28 @@ class XRISMSolver(RISMSolver):
         P = self.rismInpData.P
         t_W = self.rismInpData.t_W
         Us = self.rismInpData.Us
-        Ul = self.rismInpData.Ul
-        t_Ul = self.rismInpData.t_Ul
+        Ul1 = self.rismInpData.Ul
+        Cl1 = - self.rismInpData.Fb
+        t_Cl1 = - self.rismInpData.t_Fb
+        Clc1 = self.rismInpData.Fbc # Ul+Cl
         grid = self.rismInpData.gridData
         closure = self.closure
 
         Etas0 = self.initializer.initializeEta0()
+        Cs = self.initializer.initializeEta0() # TODO 別のメソッドを定義する
 
         numTotalLoop = 0
         for factor in self.chargeFactorList:
             # 初期化
-            fUl = Ul * factor**2
-            t_fUl = t_Ul * factor**2
-            fU = Us + fUl
+            Ul = Ul1 * factor**2
+            Cl = Cl1 * factor**2
+            t_Cl = t_Cl1 * factor**2
+            Clc = Clc1 * factor**2
+            U = Us + Ul
             Etas = Etas0
             isConverged = False
 
             # 長距離part
-            Cl = - fUl
-            t_Cl = - t_fUl
             t_Hl = t_W @ t_Cl @ t_W @ np.linalg.inv(I - P @ t_Cl @ t_W)
             Hl = grid.ifft3d_spsymm(t_Hl)
             t_Xl = t_W + P @ t_Hl
@@ -414,7 +417,7 @@ class XRISMSolver(RISMSolver):
             while True:
                 numLoop +=1
                 numTotalLoop += 1
-                Cs = closure.apply(Us=Us, Ul=fUl, Hl=Hl, Etas=Etas)
+                Cs = closure.apply(Us=Us, Ul=Ul, Cs=Cs, Cl=Cl, Clc=Clc, Hs=Hs, Hl=Hl, Etas=Etas)
                 # フーリエ変換
                 t_Cs = grid.fft3d_spsymm(Cs)
                 # RISM式

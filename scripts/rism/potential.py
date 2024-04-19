@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.special import erf, erfc
 
 
 def generateLennardJonesPotMatrix(sigma1, sigma2, eps1, eps2, r, beta):
@@ -20,6 +21,7 @@ def generateLennardJonesPotMatrix(sigma1, sigma2, eps1, eps2, r, beta):
 
     return Us
 
+
 def generateCoulombPotMatrix(z1, z2, r, beta):
     """
     z1  : np.ndarray: shape: (numsiteA,): e
@@ -27,14 +29,28 @@ def generateCoulombPotMatrix(z1, z2, r, beta):
     r   : np.ndarray: shape: (numgrid,) : A
     beta: float                         : (kcal/mol)^-1
     """
-    ZZ = z1[:,np.newaxis] * z2
-    Ul = beta * 332.053 * ZZ / r[:,np.newaxis,np.newaxis]
-    return Ul
+    return generateFbondMatrix(z1, z2, r, beta, np.inf)
 
-def generateFourierSpaceCoulombPotMatrix(z1, z2, k, beta):
+def generateFbondMatrix(z1, z2, r, beta, alpha):
     """
 
     """
     ZZ = z1[:,np.newaxis] * z2
-    t_Ul = beta * 332.053 * ZZ * 4*np.pi / (k[:,np.newaxis,np.newaxis]**2)
-    return t_Ul
+    Fb = beta * 332.053 * ZZ / r[:,np.newaxis,np.newaxis] * erf(alpha * r[:,np.newaxis,np.newaxis])
+    return Fb
+
+def generateComplementaryFbondMatrix(z1, z2, r, beta, alpha):
+    """
+    Ul - Fb
+    """
+    ZZ = z1[:,np.newaxis] * z2
+    Fbc = beta * 332.053 * ZZ / r[:,np.newaxis,np.newaxis] * erfc(alpha * r[:,np.newaxis,np.newaxis])
+    return Fbc
+
+def generateFourierSpaceFbondMatrix(z1, z2, k, beta, alpha):
+    """
+
+    """
+    ZZ = z1[:,np.newaxis] * z2
+    t_Fb = beta * 332.053 * ZZ * 4*np.pi / (k[:,np.newaxis,np.newaxis]**2) * np.exp(-(k[:,np.newaxis,np.newaxis]/2/alpha)**2)
+    return t_Fb

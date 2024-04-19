@@ -82,7 +82,13 @@ class RISMInputData():
 
         # サイト間長距離ポテンシャル行列: [無次元]: shape: (numgrid, totalN, totalN)
         Ul = generateCoulombPotMatrix(z, z, r, beta)
-        t_Ul = generateFourierSpaceCoulombPotMatrix(z, z, k, beta)
+
+        # f-bond: [無次元]: shape: (numgrid, totalN, totalN)
+        alpha = rismDict['configure'].get('fbondAlpha', np.inf)
+        Fb = generateFbondMatrix(z, z, r, beta, alpha)
+        t_Fb = generateFourierSpaceFbondMatrix(z, z, k, beta, alpha)
+        # Ul - Fb
+        Fbc = generateComplementaryFbondMatrix(z, z, r, beta, alpha)
 
         # -------------------------------------
         # インスタンス初期化
@@ -102,7 +108,9 @@ class RISMInputData():
         self.t_W = t_W
         self.Us = Us
         self.Ul = Ul
-        self.t_Ul = t_Ul
+        self.Fb = Fb
+        self.t_Fb = t_Fb
+        self.Fbc = Fbc
         self.corrFuncShape = t_W.shape
 
         self.closure = closure
