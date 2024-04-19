@@ -197,7 +197,7 @@ class RISMData():
         self.maxError = kwargs['maxError']
         self.isConverged = kwargs['isConverged']
         self.chargeFactor = kwargs['chargeFactor']
-        self.fUl = kwargs['fUl']
+        self.Ul = kwargs['Ul']
         self.t_C = kwargs['t_C']
         self.t_H = kwargs['t_H']
         self.t_X = kwargs['t_X']
@@ -207,9 +207,9 @@ class RISMData():
         self.Eta = kwargs['Eta']
 
     def giveFuncsDict(self):
-        # fUl, t_C, t_H, t_X, C, H, G, Eta
+        # Ul, t_C, t_H, t_X, C, H, G, Eta
         d = {
-                'fUl': [self.fUl, DataAnnotation.SymmMatrix],
+                'Ul': [self.Ul, DataAnnotation.SymmMatrix],
                 't_C': [self.t_C, DataAnnotation.SymmMatrix],
                 't_H': [self.t_H, DataAnnotation.SymmMatrix],
                 't_X': [self.t_X, DataAnnotation.SquareMatrix], # Xは非対称行列なのでSquare指定

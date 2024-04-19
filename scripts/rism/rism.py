@@ -353,7 +353,7 @@ class XRISMSolver(RISMSolver):
                     maxError=maxError,
                     isConverged=isConverged,
                     chargeFactor=factor,
-                    fUl=fUl,
+                    Ul=Ul,
                     t_C=t_C,
                     t_H=t_H,
                     t_X=t_X,
