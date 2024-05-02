@@ -82,7 +82,7 @@ def KHclosure(**kwargs):
     U = Us + Ul
     d = -U + Eta
     heavi_p = np.heaviside(d,0.5)
-    heavi_m = 1 - theta_p
+    heavi_m = 1 - heavi_p
     # exp(d)のままではexp()を評価して発散する場合があるのでexp()の前にヘヴィサイドを挟む
     return (np.exp(d*heavi_m)-1) * heavi_m + d * heavi_p -Eta
 
@@ -127,7 +127,7 @@ def KHclosure_XRISM(**kwargs):
     Clc = kwargs['Clc']
     d = -Us + Hl + Etas - Clc
     heavi_p = np.heaviside(d,0.5)
-    heavi_m = 1 - theta_p
+    heavi_m = 1 - heavi_p
     return (np.exp(d*heavi_m)-1) * heavi_m + d * heavi_p -(Hl+Etas)
 
 def PYclosure_XRISM(**kwargs):
