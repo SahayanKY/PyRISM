@@ -81,7 +81,10 @@ def KHclosure(**kwargs):
     Eta = kwargs['Eta']
     U = Us + Ul
     d = -U + Eta
-    return (np.exp(d)-1) * np.heaviside(-d,0.5) + d * np.heaviside(d,0.5) -Eta
+    heavi_p = np.heaviside(d,0.5)
+    heavi_m = 1 - theta_p
+    # exp(d)のままではexp()を評価して発散する場合があるのでexp()の前にヘヴィサイドを挟む
+    return (np.exp(d*heavi_m)-1) * heavi_m + d * heavi_p -Eta
 
 def PYclosure(**kwargs):
     """
@@ -123,7 +126,9 @@ def KHclosure_XRISM(**kwargs):
     Etas = kwargs['Etas']
     Clc = kwargs['Clc']
     d = -Us + Hl + Etas - Clc
-    return (np.exp(d)-1) * np.heaviside(-d,0.5) + d * np.heaviside(d,0.5) -(Hl+Etas)
+    heavi_p = np.heaviside(d,0.5)
+    heavi_m = 1 - theta_p
+    return (np.exp(d*heavi_m)-1) * heavi_m + d * heavi_p -(Hl+Etas)
 
 def PYclosure_XRISM(**kwargs):
     """
